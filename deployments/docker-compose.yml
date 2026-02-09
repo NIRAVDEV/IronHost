@@ -1,0 +1,102 @@
+# IronHost Development Stack
+# Usage: docker-compose up -d
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: ironhost-postgres
+    environment:
+      POSTGRES_USER: ironhost
+      POSTGRES_PASSWORD: ironhost_dev_password
+      POSTGRES_DB: ironhost
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/master/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ironhost" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: ironhost-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Master Control Plane
+  master:
+    build:
+      context: ../services/master
+      dockerfile: Dockerfile
+    container_name: ironhost-master
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=ironhost
+      - DB_PASSWORD=ironhost_dev_password
+      - DB_NAME=ironhost
+      - REDIS_ADDR=redis:6379
+    volumes:
+      - ../certs:/etc/ironhost/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      --http-port=8080 --db-host=postgres --db-port=5432 --db-user=ironhost --db-password=ironhost_dev_password --db-name=ironhost --redis-addr=redis:6379 --cert-dir=/etc/ironhost/certs
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ../services/frontend
+      dockerfile: Dockerfile
+    container_name: ironhost-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
+    depends_on:
+      - master
+
+  # Agent (for local development/testing)
+  # In production, agents run on separate Linux hosts
+  agent:
+    build:
+      context: ../services/agent
+      dockerfile: Dockerfile
+    container_name: ironhost-agent-local
+    ports:
+      - "8443:8443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../certs:/etc/ironhost/certs:ro
+      - agent_data:/var/lib/ironhost
+    command: >
+      --port=8443 --cert=/etc/ironhost/certs/server.crt --key=/etc/ironhost/certs/server.key --ca=/etc/ironhost/certs/ca.crt --data=/var/lib/ironhost --node-id=local-dev-node
+    # Run as root to access Docker socket
+    user: root
+
+volumes:
+  postgres_data:
+  redis_data:
+  agent_data:
+
+
+networks:
+  default:
+    name: ironhost-network
