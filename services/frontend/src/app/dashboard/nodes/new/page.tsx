@@ -30,6 +30,7 @@ export default function AddNodePage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        console.log('Submitting Add Node form...');
         setIsLoading(true);
         setError(null);
 

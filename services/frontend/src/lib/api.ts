@@ -2,6 +2,7 @@ import axios from 'axios';
 
 // API base URL - Master Control Plane
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+console.log('IronHost API URL:', API_BASE_URL);
 
 // Create axios instance
 export const api = axios.create({
