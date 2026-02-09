@@ -75,7 +75,7 @@ func main() {
 	// Middleware
 	// Middleware - Register CORS first to handle preflight requests
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "https://iron-host.vercel.app, http://localhost:3000, *",
+		AllowOrigins:     "https://iron-host.vercel.app, http://localhost:3000",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, HEAD, PUT, DELETE, PATCH, OPTIONS",
 		AllowCredentials: true,
