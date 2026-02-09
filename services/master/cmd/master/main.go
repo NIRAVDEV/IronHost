@@ -73,14 +73,23 @@ func main() {
 	})
 
 	// Middleware
+	// Middleware - Register CORS first to handle preflight requests
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     "https://iron-host.vercel.app, http://localhost:3000, *",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		AllowMethods:     "GET, POST, HEAD, PUT, DELETE, PATCH, OPTIONS",
+		AllowCredentials: true,
+	}))
+
 	app.Use(recover.New())
 	app.Use(logger.New(logger.Config{
 		Format: "[${time}] ${status} ${method} ${path} ${latency}\n",
 	}))
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*", // Configure appropriately for production
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-	}))
+
+	// Health check
+	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.SendString("OK")
+	})
 
 	// Register API routes
 	api.RegisterRoutes(app, db, grpcPool)
