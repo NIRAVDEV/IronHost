@@ -21,8 +21,11 @@ func NewNodeHandler(db *database.DB, grpcPool *mastergrpc.ClientPool) *NodeHandl
 
 // List returns all nodes
 func (h *NodeHandler) List(c *fiber.Ctx) error {
-	// TODO: Implement database query
-	return c.JSON(fiber.Map{"nodes": []interface{}{}})
+	nodes, err := h.db.ListNodes(c.Context())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to list nodes")
+	}
+	return c.JSON(fiber.Map{"nodes": nodes})
 }
 
 // Get returns a specific node
@@ -44,20 +47,33 @@ func (h *NodeHandler) Create(c *fiber.Ctx) error {
 		GRPCPort    int    `json:"grpc_port"`
 		MemoryTotal int64  `json:"memory_total"`
 		DiskTotal   int64  `json:"disk_total"`
+		DaemonToken string `json:"daemon_token"`
 	}
 
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 	}
 
-	// TODO:
-	// 1. Generate daemon token
-	// 2. Save to database
-	// 3. Return token for agent configuration
+	if req.Scheme == "" {
+		req.Scheme = "http" // Default to http for insecure mode
+	}
+	if req.GRPCPort == 0 {
+		req.GRPCPort = 8443
+	}
+
+	// Store the token plaintext for simplicity (in production, hash it)
+	// For now we just store plaintext since Agent also gets plaintext
+	daemonTokenHash := req.DaemonToken
+
+	node, err := h.db.CreateNode(c.Context(), req.Name, req.FQDN, req.Scheme, req.GRPCPort, req.MemoryTotal, req.DiskTotal, daemonTokenHash)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to create node: "+err.Error())
+	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"message": "node created",
-		"node_id": uuid.New(),
+		"message":      "node created",
+		"node":         node,
+		"daemon_token": req.DaemonToken, // Return token for Agent configuration
 	})
 }
 
@@ -77,7 +93,11 @@ func (h *NodeHandler) Delete(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid node ID")
 	}
-	_ = id
+
+	if err := h.db.DeleteNode(c.Context(), id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to delete node")
+	}
+
 	return c.JSON(fiber.Map{"message": "node deleted"})
 }
 

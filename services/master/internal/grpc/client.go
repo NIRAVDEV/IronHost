@@ -9,20 +9,25 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // ClientPool manages gRPC connections to agent nodes
 type ClientPool struct {
-	certDir string
-	clients map[string]*grpc.ClientConn
-	mu      sync.RWMutex
+	certDir  string
+	insecure bool
+	clients  map[string]*grpc.ClientConn
+	mu       sync.RWMutex
 }
 
 // NewClientPool creates a new gRPC client pool
 func NewClientPool(certDir string) *ClientPool {
+	// Check for insecure mode via environment variable
+	insecureMode := os.Getenv("GRPC_INSECURE") == "true"
 	return &ClientPool{
-		certDir: certDir,
-		clients: make(map[string]*grpc.ClientConn),
+		certDir:  certDir,
+		insecure: insecureMode,
+		clients:  make(map[string]*grpc.ClientConn),
 	}
 }
 
@@ -44,16 +49,29 @@ func (p *ClientPool) GetClient(nodeAddress string) (*grpc.ClientConn, error) {
 		return conn, nil
 	}
 
-	tlsConfig, err := p.loadTLSConfig()
-	if err != nil {
-		return nil, err
+	var conn *grpc.ClientConn
+	var err error
+
+	if p.insecure {
+		// Insecure mode for development/local testing
+		conn, err = grpc.Dial(
+			nodeAddress,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(16*1024*1024)),
+		)
+	} else {
+		// Production mode with mTLS
+		tlsConfig, tlsErr := p.loadTLSConfig()
+		if tlsErr != nil {
+			return nil, tlsErr
+		}
+		conn, err = grpc.Dial(
+			nodeAddress,
+			grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(16*1024*1024)),
+		)
 	}
 
-	conn, err := grpc.Dial(
-		nodeAddress,
-		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(16*1024*1024)),
-	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to agent at %s: %w", nodeAddress, err)
 	}
