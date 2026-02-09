@@ -1,0 +1,48 @@
+# Build Stage
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+
+# Install git for private modules if needed
+RUN apk add --no-cache git
+
+# Copy master service definition
+COPY services/master/go.mod services/master/go.sum ./services/master/
+
+# Download dependencies
+WORKDIR /app/services/master
+RUN go mod download
+
+# Copy entire repo (to access shared code if needed in future)
+WORKDIR /app
+COPY . .
+
+# Build Master
+WORKDIR /app/services/master
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /master ./cmd/master
+
+# Runtime Stage
+FROM alpine:3.19
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata
+
+# Create non-root user
+RUN addgroup -S ironhost && adduser -S ironhost -G ironhost
+
+# Copy binary
+COPY --from=builder /master .
+
+# Copy migrations
+COPY --from=builder /app/services/master/migrations ./migrations
+
+# Set ownership
+RUN chown -R ironhost:ironhost /app
+
+USER ironhost
+
+EXPOSE 8080
+
+CMD ["./master"]
