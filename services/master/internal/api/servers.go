@@ -85,11 +85,14 @@ func (h *ServerHandler) Create(c *fiber.Ctx) error {
 	}
 
 	// 3. Send CreateServer RPC to agent (async — don't block the HTTP response)
+	// 3. Send CreateServer RPC to agent (async — don't block the HTTP response)
 	go func() {
+		// Use a detached context for background work, as c.Context() is cancelled when request ends
+		ctx := context.Background()
 		if err := h.createServerOnAgent(server, node, allocation); err != nil {
 			log.Printf("Failed to create server %s on agent: %v", server.ID, err)
 			// Update status to reflect failure
-			_ = h.db.UpdateServerStatus(c.Context(), server.ID, models.StatusOffline)
+			_ = h.db.UpdateServerStatus(ctx, server.ID, models.StatusOffline)
 		}
 	}()
 
