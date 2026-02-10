@@ -1,6 +1,8 @@
 package api
 
 import (
+	"log"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -11,8 +13,16 @@ import (
 	"github.com/ironhost/master/internal/database"
 )
 
-// JWT secret (in production, use environment variable)
-var jwtSecret = []byte("ironhost-secret-key-change-in-production")
+// JWT secret - reads from SUPABASE_JWT_SECRET env var (found in Supabase Dashboard > Settings > API > JWT Secret)
+// Falls back to legacy secret for backward compatibility
+var jwtSecret = func() []byte {
+	if secret := os.Getenv("SUPABASE_JWT_SECRET"); secret != "" {
+		log.Println("Using SUPABASE_JWT_SECRET for JWT validation")
+		return []byte(secret)
+	}
+	log.Println("WARNING: Using fallback JWT secret. Set SUPABASE_JWT_SECRET for production.")
+	return []byte("ironhost-secret-key-change-in-production")
+}()
 
 // AuthHandler handles authentication requests
 type AuthHandler struct {

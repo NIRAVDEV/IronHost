@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import { useAuthStore } from '@/stores/auth';
 
 // Icons as simple SVG components for now (can be replaced with Lucide later)
 const icons = {
@@ -44,6 +46,13 @@ const icons = {
             <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
         </svg>
     ),
+    logout: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" x2="9" y1="12" y2="12" />
+        </svg>
+    ),
 };
 
 const navItems = [
@@ -56,6 +65,21 @@ const navItems = [
 
 export function Sidebar() {
     const pathname = usePathname();
+    const router = useRouter();
+    const { user, fetchUser, logout } = useAuthStore();
+
+    useEffect(() => {
+        fetchUser();
+    }, [fetchUser]);
+
+    const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+    const displayEmail = user?.email || '';
+    const initials = displayName.charAt(0).toUpperCase();
+
+    const handleLogout = async () => {
+        await logout();
+        router.push('/login');
+    };
 
     return (
         <aside className="fixed left-0 top-0 z-40 h-screen w-64 glass-card border-r border-border/50">
@@ -101,12 +125,19 @@ export function Sidebar() {
                 <div className="border-t border-border/50 p-4">
                     <div className="flex items-center gap-3 rounded-lg bg-muted/30 p-3">
                         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-500/20 text-primary-400 font-semibold text-sm">
-                            U
+                            {initials}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">User</p>
-                            <p className="text-xs text-muted-foreground truncate">user@ironhost.io</p>
+                            <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
+                            <p className="text-xs text-muted-foreground truncate">{displayEmail}</p>
                         </div>
+                        <button
+                            onClick={handleLogout}
+                            className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                            title="Sign out"
+                        >
+                            {icons.logout}
+                        </button>
                     </div>
                 </div>
             </div>

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { createClient } from '@/lib/supabase';
 
 // API base URL - Master Control Plane
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
@@ -12,12 +13,17 @@ export const api = axios.create({
     },
 });
 
-// Request interceptor - add auth token
-api.interceptors.request.use((config) => {
+// Request interceptor - add Supabase auth token
+api.interceptors.request.use(async (config) => {
     if (typeof window !== 'undefined') {
-        const token = localStorage.getItem('token');
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
+        try {
+            const supabase = createClient();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) {
+                config.headers.Authorization = `Bearer ${session.access_token}`;
+            }
+        } catch {
+            // Silently fail if no session
         }
     }
     return config;
@@ -29,7 +35,6 @@ api.interceptors.response.use(
     (error) => {
         if (error.response?.status === 401) {
             if (typeof window !== 'undefined') {
-                localStorage.removeItem('token');
                 window.location.href = '/login';
             }
         }
@@ -94,31 +99,6 @@ export interface Invoice {
     status: string;
     invoice_date: string;
 }
-
-// Auth API
-export const authApi = {
-    register: async (email: string, password: string, username: string) => {
-        const { data } = await api.post<{ token: string; user: User }>('/auth/register', {
-            email,
-            password,
-            username,
-        });
-        return data;
-    },
-
-    login: async (email: string, password: string) => {
-        const { data } = await api.post<{ token: string; user: User }>('/auth/login', {
-            email,
-            password,
-        });
-        return data;
-    },
-
-    me: async () => {
-        const { data } = await api.get<User>('/auth/me');
-        return data;
-    },
-};
 
 // Servers API
 export const serversApi = {

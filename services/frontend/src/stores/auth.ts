@@ -1,80 +1,119 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { authApi, type User } from '@/lib/api';
+import { createClient } from '@/lib/supabase';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface AuthState {
-    user: User | null;
-    token: string | null;
+    user: SupabaseUser | null;
     isLoading: boolean;
     isAuthenticated: boolean;
 
     // Actions
     login: (email: string, password: string) => Promise<void>;
+    loginWithProvider: (provider: 'google' | 'github') => Promise<void>;
     register: (email: string, password: string, username: string) => Promise<void>;
-    logout: () => void;
+    logout: () => Promise<void>;
     fetchUser: () => Promise<void>;
     setLoading: (loading: boolean) => void;
 }
 
-export const useAuthStore = create<AuthState>()(
-    persist(
-        (set, get) => ({
-            user: null,
-            token: null,
-            isLoading: false,
-            isAuthenticated: false,
+export const useAuthStore = create<AuthState>()((set) => ({
+    user: null,
+    isLoading: false,
+    isAuthenticated: false,
 
-            login: async (email: string, password: string) => {
-                set({ isLoading: true });
-                try {
-                    const { token, user } = await authApi.login(email, password);
-                    localStorage.setItem('token', token);
-                    set({ user, token, isAuthenticated: true, isLoading: false });
-                } catch (error) {
-                    set({ isLoading: false });
-                    throw error;
-                }
-            },
+    login: async (email: string, password: string) => {
+        set({ isLoading: true });
+        try {
+            const supabase = createClient();
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
 
-            register: async (email: string, password: string, username: string) => {
-                set({ isLoading: true });
-                try {
-                    const { token, user } = await authApi.register(email, password, username);
-                    localStorage.setItem('token', token);
-                    set({ user, token, isAuthenticated: true, isLoading: false });
-                } catch (error) {
-                    set({ isLoading: false });
-                    throw error;
-                }
-            },
+            if (error) throw error;
 
-            logout: () => {
-                localStorage.removeItem('token');
-                set({ user: null, token: null, isAuthenticated: false });
-            },
-
-            fetchUser: async () => {
-                const token = get().token || localStorage.getItem('token');
-                if (!token) {
-                    set({ isAuthenticated: false });
-                    return;
-                }
-
-                set({ isLoading: true });
-                try {
-                    const user = await authApi.me();
-                    set({ user, token, isAuthenticated: true, isLoading: false });
-                } catch {
-                    localStorage.removeItem('token');
-                    set({ user: null, token: null, isAuthenticated: false, isLoading: false });
-                }
-            },
-
-            setLoading: (loading: boolean) => set({ isLoading: loading }),
-        }),
-        {
-            name: 'ironhost-auth',
-            partialize: (state) => ({ token: state.token }),
+            set({
+                user: data.user,
+                isAuthenticated: true,
+                isLoading: false,
+            });
+        } catch (error) {
+            set({ isLoading: false });
+            throw error;
         }
-    )
-);
+    },
+
+    loginWithProvider: async (provider: 'google' | 'github') => {
+        set({ isLoading: true });
+        try {
+            const supabase = createClient();
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider,
+                options: {
+                    redirectTo: `${window.location.origin}/auth/callback`,
+                },
+            });
+
+            if (error) throw error;
+            // OAuth redirects the user, so we don't need to update state here.
+            // The callback page will handle session retrieval.
+        } catch (error) {
+            set({ isLoading: false });
+            throw error;
+        }
+    },
+
+    register: async (email: string, password: string, username: string) => {
+        set({ isLoading: true });
+        try {
+            const supabase = createClient();
+            const { data, error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: {
+                        full_name: username,
+                    },
+                },
+            });
+
+            if (error) throw error;
+
+            set({
+                user: data.user,
+                isAuthenticated: !!data.user,
+                isLoading: false,
+            });
+        } catch (error) {
+            set({ isLoading: false });
+            throw error;
+        }
+    },
+
+    logout: async () => {
+        try {
+            const supabase = createClient();
+            await supabase.auth.signOut();
+        } finally {
+            set({ user: null, isAuthenticated: false });
+        }
+    },
+
+    fetchUser: async () => {
+        set({ isLoading: true });
+        try {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+
+            set({
+                user,
+                isAuthenticated: !!user,
+                isLoading: false,
+            });
+        } catch {
+            set({ user: null, isAuthenticated: false, isLoading: false });
+        }
+    },
+
+    setLoading: (loading: boolean) => set({ isLoading: loading }),
+}));
