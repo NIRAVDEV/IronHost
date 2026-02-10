@@ -53,7 +53,7 @@ export interface User {
 export interface Server {
     id: string;
     name: string;
-    status: 'running' | 'stopped' | 'starting' | 'installing';
+    status: 'running' | 'stopped' | 'starting' | 'installing' | 'offline';
     docker_image: string;
     memory_limit: number;
     memory_used?: number;
