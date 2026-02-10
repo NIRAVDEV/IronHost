@@ -382,6 +382,52 @@ func (h *ServerHandler) SendCommand(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "command sent"})
 }
 
+// GetLogs returns recent server logs via Agent's StreamConsole RPC
+func (h *ServerHandler) GetLogs(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid server ID")
+	}
+
+	server, err := h.db.GetServer(c.Context(), id)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "server not found")
+	}
+
+	node, err := h.db.GetNodeByID(c.Context(), server.NodeID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "node not found")
+	}
+
+	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to connect to agent")
+	}
+
+	client := agentpb.NewAgentServiceClient(conn)
+	ctx := metadata.AppendToOutgoingContext(c.Context(), "authorization", "Bearer "+node.DaemonTokenHash)
+
+	// Call StreamConsole with a short deadline to collect available lines
+	streamCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	stream, err := client.StreamConsole(streamCtx, &agentpb.ServerIdentifier{ServerId: server.ID.String()})
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to stream console: "+err.Error())
+	}
+
+	var lines []string
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			break // Timeout or end of stream
+		}
+		lines = append(lines, msg.Line)
+	}
+
+	return c.JSON(fiber.Map{"logs": lines})
+}
+
 // StreamConsole upgrades to WebSocket for console streaming
 func (h *ServerHandler) StreamConsole(c *fiber.Ctx) error {
 	return fiber.NewError(fiber.StatusNotImplemented, "console streaming not yet implemented")

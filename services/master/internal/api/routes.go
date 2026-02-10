@@ -67,6 +67,7 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 	servers.Post("/:id/stop", serverHandler.Stop)
 	servers.Post("/:id/restart", serverHandler.Restart)
 	servers.Post("/:id/command", serverHandler.SendCommand)
+	servers.Get("/:id/logs", serverHandler.GetLogs)
 	servers.Get("/:id/console", serverHandler.StreamConsole) // WebSocket upgrade
 
 	// Allocations

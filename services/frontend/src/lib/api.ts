@@ -146,6 +146,11 @@ export const serversApi = {
         const { data } = await api.post(`/servers/${id}/command`, { command });
         return data;
     },
+
+    getLogs: async (id: string) => {
+        const { data } = await api.get<{ logs: string[] }>(`/servers/${id}/logs`);
+        return data.logs || [];
+    },
 };
 
 // Nodes API

@@ -214,6 +214,34 @@ func (m *Manager) GetContainerStats(ctx context.Context, containerID string) (*t
 	return &stats, nil
 }
 
+// GetLogs returns the last N lines of container logs (non-streaming)
+func (m *Manager) GetLogs(ctx context.Context, containerID string, tail int) (string, error) {
+	if tail <= 0 {
+		tail = 100
+	}
+
+	options := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     false,
+		Tail:       fmt.Sprintf("%d", tail),
+		Timestamps: true,
+	}
+
+	reader, err := m.client.ContainerLogs(ctx, containerID, options)
+	if err != nil {
+		return "", fmt.Errorf("failed to get logs: %w", err)
+	}
+	defer reader.Close()
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return "", fmt.Errorf("failed to read logs: %w", err)
+	}
+
+	return string(data), nil
+}
+
 // StreamLogs streams container logs to the provided writer
 func (m *Manager) StreamLogs(ctx context.Context, containerID string, stdout, stderr io.Writer) error {
 	options := container.LogsOptions{

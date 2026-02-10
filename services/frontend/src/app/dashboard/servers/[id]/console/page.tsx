@@ -1,18 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect, useRef, use } from 'react';
+import { useState, useEffect, useRef, use, useCallback } from 'react';
 import { serversApi, Server } from '@/lib/api';
 
 export default function ConsolePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const [server, setServer] = useState<Server | null>(null);
-    const [logs, setLogs] = useState<string[]>([
-        'Connecting to server console...',
-    ]);
+    const [logs, setLogs] = useState<string[]>([]);
     const [command, setCommand] = useState('');
     const [isSending, setIsSending] = useState(false);
     const terminalRef = useRef<HTMLDivElement>(null);
+    const prevLogCount = useRef(0);
 
     // Fetch server info
     useEffect(() => {
@@ -20,19 +19,36 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
             try {
                 const data = await serversApi.get(id);
                 setServer(data);
-                setLogs(prev => [...prev, `Connected to ${data.name} (${data.status})`]);
             } catch (err) {
                 console.error('Failed to fetch server:', err);
-                setLogs(prev => [...prev, '[ERROR] Failed to connect to server']);
             }
         }
         fetchServer();
     }, [id]);
 
-    // Auto scroll to bottom
+    // Poll for logs
+    const fetchLogs = useCallback(async () => {
+        try {
+            const logLines = await serversApi.getLogs(id);
+            if (logLines && logLines.length > 0) {
+                setLogs(logLines);
+            }
+        } catch (err) {
+            // Silently fail - server might not be running
+        }
+    }, [id]);
+
     useEffect(() => {
-        if (terminalRef.current) {
+        fetchLogs();
+        const interval = setInterval(fetchLogs, 3000);
+        return () => clearInterval(interval);
+    }, [fetchLogs]);
+
+    // Auto scroll to bottom when new logs arrive
+    useEffect(() => {
+        if (logs.length !== prevLogCount.current && terminalRef.current) {
             terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+            prevLogCount.current = logs.length;
         }
     }, [logs]);
 
@@ -40,23 +56,31 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
         e.preventDefault();
         if (!command.trim() || isSending) return;
 
-        const time = new Date().toLocaleTimeString('en-US', { hour12: false });
-        setLogs(prev => [...prev, `[${time}] [CONSOLE] > ${command}`]);
-
         const cmd = command;
         setCommand('');
         setIsSending(true);
 
+        // Optimistically add the command to logs
+        const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+        setLogs(prev => [...prev, `[${time}] [CONSOLE] > ${cmd}`]);
+
         try {
             await serversApi.sendCommand(id, cmd);
-            const time2 = new Date().toLocaleTimeString('en-US', { hour12: false });
-            setLogs(prev => [...prev, `[${time2}] Command sent successfully`]);
+            // Fetch fresh logs after a short delay to see the response
+            setTimeout(fetchLogs, 1000);
         } catch (err) {
             const time2 = new Date().toLocaleTimeString('en-US', { hour12: false });
             setLogs(prev => [...prev, `[${time2}] [ERROR] Failed to send command: ${err}`]);
         } finally {
             setIsSending(false);
         }
+    };
+
+    // Clean Docker log output (remove header bytes)
+    const cleanLog = (line: string): string => {
+        // Docker multiplexed output has 8-byte header per frame
+        // Remove non-printable characters from the beginning
+        return line.replace(/^[\x00-\x08]/g, '').replace(/[\x00-\x08]/g, '');
     };
 
     return (
@@ -92,20 +116,31 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                     ref={terminalRef}
                     className="flex-1 p-4 overflow-y-auto font-mono text-sm bg-black/50"
                 >
-                    {logs.map((log, i) => (
-                        <div
-                            key={i}
-                            className={`leading-relaxed ${log.includes('[WARN]') ? 'text-yellow-400' :
-                                log.includes('[ERROR]') ? 'text-red-400' :
-                                    log.includes('Connected') ? 'text-green-400' :
-                                        log.includes('[CONSOLE]') ? 'text-cyan-400' :
-                                            log.includes('Command sent') ? 'text-green-400' :
-                                                'text-gray-300'
-                                }`}
-                        >
-                            {log}
+                    {logs.length === 0 ? (
+                        <div className="text-muted-foreground">
+                            {server?.status === 'running'
+                                ? 'Loading console output...'
+                                : 'Server is not running. Start it to see console output.'}
                         </div>
-                    ))}
+                    ) : (
+                        logs.map((log, i) => {
+                            const cleaned = cleanLog(log);
+                            return (
+                                <div
+                                    key={i}
+                                    className={`leading-relaxed whitespace-pre-wrap break-all ${cleaned.includes('[WARN]') ? 'text-yellow-400' :
+                                            cleaned.includes('[ERROR]') ? 'text-red-400' :
+                                                cleaned.includes('joined the game') || cleaned.includes('logged in') ? 'text-green-400' :
+                                                    cleaned.includes('[CONSOLE]') ? 'text-cyan-400' :
+                                                        cleaned.includes('Done (') ? 'text-green-400' :
+                                                            'text-gray-300'
+                                        }`}
+                                >
+                                    {cleaned}
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
 
                 {/* Command input */}
