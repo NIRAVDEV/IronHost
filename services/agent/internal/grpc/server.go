@@ -135,22 +135,28 @@ func (s *AgentService) CreateServer(ctx context.Context, req *agentpb.CreateServ
 
 // StartServer starts a stopped server container
 func (s *AgentService) StartServer(ctx context.Context, req *agentpb.ServerIdentifier) (*agentpb.ServerActionResponse, error) {
+	fmt.Printf("▶️  Received StartServer request for: %s\n", req.ServerId)
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
+		fmt.Printf("❌ StartServer: container not found: %v\n", err)
 		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
 	if err := s.dockerMgr.StartContainer(ctx, containerID); err != nil {
+		fmt.Printf("❌ StartServer: failed: %v\n", err)
 		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
+	fmt.Printf("✅ StartServer: success for %s\n", req.ServerId)
 	return &agentpb.ServerActionResponse{Success: true}, nil
 }
 
 // StopServer stops a running server container
 func (s *AgentService) StopServer(ctx context.Context, req *agentpb.StopServerRequest) (*agentpb.ServerActionResponse, error) {
+	fmt.Printf("⏹️  Received StopServer request for: %s\n", req.ServerId)
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
+		fmt.Printf("❌ StopServer: container not found: %v\n", err)
 		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
@@ -160,40 +166,50 @@ func (s *AgentService) StopServer(ctx context.Context, req *agentpb.StopServerRe
 	}
 
 	if err := s.dockerMgr.StopContainer(ctx, containerID, timeout); err != nil {
+		fmt.Printf("❌ StopServer: failed: %v\n", err)
 		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
+	fmt.Printf("✅ StopServer: success for %s\n", req.ServerId)
 	return &agentpb.ServerActionResponse{Success: true}, nil
 }
 
 // RestartServer restarts a server container
 func (s *AgentService) RestartServer(ctx context.Context, req *agentpb.ServerIdentifier) (*agentpb.ServerActionResponse, error) {
+	fmt.Printf("🔄 Received RestartServer request for: %s\n", req.ServerId)
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
+		fmt.Printf("❌ RestartServer: container not found: %v\n", err)
 		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
 	// Stop then start
 	if err := s.dockerMgr.StopContainer(ctx, containerID, 30); err != nil {
+		fmt.Printf("❌ RestartServer: stop failed: %v\n", err)
 		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
 	if err := s.dockerMgr.StartContainer(ctx, containerID); err != nil {
+		fmt.Printf("❌ RestartServer: start failed: %v\n", err)
 		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
+	fmt.Printf("✅ RestartServer: success for %s\n", req.ServerId)
 	return &agentpb.ServerActionResponse{Success: true}, nil
 }
 
 // DeleteServer removes a server container
 func (s *AgentService) DeleteServer(ctx context.Context, req *agentpb.ServerIdentifier) (*agentpb.ServerActionResponse, error) {
+	fmt.Printf("🗑️  Received DeleteServer request for: %s\n", req.ServerId)
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
+		fmt.Printf("❌ DeleteServer: container not found: %v\n", err)
 		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
 	// Force remove the container
 	if err := s.dockerMgr.RemoveContainer(ctx, containerID, true); err != nil {
+		fmt.Printf("❌ DeleteServer: failed: %v\n", err)
 		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
@@ -202,6 +218,7 @@ func (s *AgentService) DeleteServer(ctx context.Context, req *agentpb.ServerIden
 	delete(s.containers, req.ServerId)
 	s.mu.Unlock()
 
+	fmt.Printf("✅ DeleteServer: success for %s\n", req.ServerId)
 	return &agentpb.ServerActionResponse{Success: true}, nil
 }
 
@@ -289,15 +306,19 @@ func (s *AgentService) StreamConsole(req *agentpb.ServerIdentifier, stream agent
 
 // SendCommand sends a command to the server console
 func (s *AgentService) SendCommand(ctx context.Context, req *agentpb.SendCommandRequest) (*emptypb.Empty, error) {
+	fmt.Printf("💬 Received SendCommand for %s: %s\n", req.ServerId, req.Command)
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
+		fmt.Printf("❌ SendCommand: container not found: %v\n", err)
 		return nil, err
 	}
 
 	if err := s.dockerMgr.SendCommand(ctx, containerID, req.Command); err != nil {
+		fmt.Printf("❌ SendCommand: failed: %v\n", err)
 		return nil, err
 	}
 
+	fmt.Printf("✅ SendCommand: success\n")
 	return &emptypb.Empty{}, nil
 }
 
