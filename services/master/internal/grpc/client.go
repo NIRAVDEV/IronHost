@@ -24,6 +24,9 @@ type ClientPool struct {
 func NewClientPool(certDir string) *ClientPool {
 	// Check for insecure mode via environment variable
 	insecureMode := os.Getenv("GRPC_INSECURE") == "true"
+	// LOGGING FOR DEBUG
+	fmt.Printf("DEBUG: NewClientPool - GRPC_INSECURE=%v\n", insecureMode)
+
 	return &ClientPool{
 		certDir:  certDir,
 		insecure: insecureMode,

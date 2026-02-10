@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -87,8 +88,10 @@ func (h *ServerHandler) Create(c *fiber.Ctx) error {
 	// 3. Send CreateServer RPC to agent (async — don't block the HTTP response)
 	// 3. Send CreateServer RPC to agent (async — don't block the HTTP response)
 	go func() {
-		// Use a detached context for background work, as c.Context() is cancelled when request ends
-		ctx := context.Background()
+		// Use a detached context with timeout for background work
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		if err := h.createServerOnAgent(server, node, allocation); err != nil {
 			log.Printf("Failed to create server %s on agent: %v", server.ID, err)
 			// Update status to reflect failure
@@ -104,6 +107,7 @@ func (h *ServerHandler) Create(c *fiber.Ctx) error {
 
 // createServerOnAgent sends the CreateServer RPC to the agent node
 func (h *ServerHandler) createServerOnAgent(server *models.Server, node *database.Node, allocation *models.Allocation) error {
+	log.Printf("DEBUG: Connecting to agent at %s for server %s", node.GetAddress(), server.ID)
 	// Connect to agent
 	conn, err := h.grpcPool.GetClient(node.GetAddress())
 	if err != nil {
@@ -133,6 +137,7 @@ func (h *ServerHandler) createServerOnAgent(server *models.Server, node *databas
 		})
 	}
 
+	log.Printf("DEBUG: Sending CreateServer RPC to agent %s...", node.Name)
 	// Send RPC
 	resp, err := client.CreateServer(ctx, &agentpb.CreateServerRequest{
 		ServerId:    server.ID.String(),
@@ -149,14 +154,16 @@ func (h *ServerHandler) createServerOnAgent(server *models.Server, node *databas
 	})
 
 	if err != nil {
+		log.Printf("DEBUG: CreateServer RPC failed with error: %v", err)
 		return fmt.Errorf("CreateServer RPC failed: %w", err)
 	}
 
 	if !resp.Success {
+		log.Printf("DEBUG: Agent returned success=false: %s", resp.ErrorMessage)
 		return fmt.Errorf("agent reported failure: %s", resp.ErrorMessage)
 	}
 
-	log.Printf("Server %s created on agent, container: %s", server.ID, resp.ContainerId)
+	log.Printf("DEBUG: Server %s created on agent, container: %s", server.ID, resp.ContainerId)
 	return nil
 }
 
