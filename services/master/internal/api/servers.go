@@ -59,7 +59,8 @@ func (h *ServerHandler) Create(c *fiber.Ctx) error {
 	}
 
 	// TODO: Get user ID from auth context (JWT claims)
-	userID := uuid.New() // Placeholder until auth middleware populates context
+	// PROVISIONAL FIX: Use existing user ID from DB
+	userID := uuid.MustParse("a010b479-4317-4cfb-9952-188566a8e40d")
 
 	// Look up the target node
 	node, err := h.db.GetNodeByID(c.Context(), req.NodeID)
