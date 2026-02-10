@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -33,6 +34,15 @@ var (
 
 func main() {
 	flag.Parse()
+
+	// Check for PORT environment variable (for Render/Heroku)
+	if envPort := os.Getenv("PORT"); envPort != "" {
+		port, err := strconv.Atoi(envPort)
+		if err == nil {
+			*httpPort = port
+			log.Printf("Using PORT from environment: %d", *httpPort)
+		}
+	}
 
 	log.Println("IronHost Master Control Plane starting...")
 
