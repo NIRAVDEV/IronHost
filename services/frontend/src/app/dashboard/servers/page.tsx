@@ -100,6 +100,9 @@ export default function ServersPage() {
             }
         }
         fetchServers();
+        // Auto-refresh every 5 seconds
+        const interval = setInterval(fetchServers, 5000);
+        return () => clearInterval(interval);
     }, []);
 
     const runningCount = servers.filter(s => s.status === 'running').length;

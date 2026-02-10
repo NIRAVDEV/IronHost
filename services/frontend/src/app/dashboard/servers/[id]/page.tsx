@@ -1,16 +1,24 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useState, use } from 'react';
+import { serversApi, Server } from '@/lib/api';
 
 // Control button component
 function ControlButton({
     icon,
     label,
     variant = 'default',
-    disabled = false
+    disabled = false,
+    loading = false,
+    onClick,
 }: {
     icon: React.ReactNode;
     label: string;
     variant?: 'default' | 'danger' | 'success';
     disabled?: boolean;
+    loading?: boolean;
+    onClick?: () => void;
 }) {
     const variants = {
         default: 'bg-muted/50 hover:bg-muted text-foreground',
@@ -20,10 +28,15 @@ function ControlButton({
 
     return (
         <button
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={disabled}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${variants[variant]} ${disabled || loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={disabled || loading}
+            onClick={onClick}
         >
-            {icon}
+            {loading ? (
+                <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+                icon
+            )}
             {label}
         </button>
     );
@@ -43,7 +56,7 @@ function ResourceGauge({
     unit: string;
     color?: 'primary' | 'accent';
 }) {
-    const percentage = Math.round((value / max) * 100);
+    const percentage = max > 0 ? Math.round((value / max) * 100) : 0;
     const gradientClass = color === 'primary'
         ? 'from-primary-500 to-primary-600'
         : 'from-accent-500 to-accent-600';
@@ -60,33 +73,96 @@ function ResourceGauge({
                     style={{ width: `${percentage}%` }}
                 />
             </div>
-            <p className="text-xs text-muted-foreground mt-2">{percentage}% used</p>
+            <p className="text-xs text-muted-foreground mt-2">{percentage}% allocated</p>
         </div>
     );
 }
 
-export default async function ServerDetailPage({ params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params;
+export default function ServerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+    const { id } = use(params);
+    const [server, setServer] = useState<Server | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-    // Mock server data - will be replaced with API call using id
-    const server = {
-        id,
-        name: 'Survival SMP',
-        status: 'running' as const,
-        game: 'Minecraft 1.20.4',
-        address: 'play.ironhost.io:25565',
-        memory: { used: 2.1, total: 4 },
-        cpu: 45,
-        disk: { used: 12, total: 50 },
-        players: { current: 12, max: 50 },
-        uptime: '5 days, 12 hours',
+    const fetchServer = async () => {
+        try {
+            const data = await serversApi.get(id);
+            setServer(data);
+            setError(null);
+        } catch (err) {
+            console.error('Failed to fetch server:', err);
+            setError('Failed to load server');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
-    const statusColors = {
+    useEffect(() => {
+        fetchServer();
+        // Auto-refresh every 5 seconds
+        const interval = setInterval(fetchServer, 5000);
+        return () => clearInterval(interval);
+    }, [id]);
+
+    const handleAction = async (action: 'start' | 'stop' | 'restart' | 'delete') => {
+        if (!server) return;
+        setActionLoading(action);
+        try {
+            if (action === 'start') await serversApi.start(server.id);
+            else if (action === 'stop') await serversApi.stop(server.id);
+            else if (action === 'restart') await serversApi.restart(server.id);
+            else if (action === 'delete') {
+                await serversApi.delete(server.id);
+                window.location.href = '/dashboard/servers';
+                return;
+            }
+            // Refresh server data after action
+            await fetchServer();
+        } catch (err) {
+            console.error(`Failed to ${action} server:`, err);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const statusColors: Record<string, string> = {
         running: 'status-running',
         stopped: 'status-stopped',
         starting: 'status-starting',
+        installing: 'status-starting',
+        offline: 'status-stopped',
     };
+
+    const statusLabels: Record<string, string> = {
+        running: 'Running',
+        stopped: 'Offline',
+        starting: 'Starting...',
+        installing: 'Installing...',
+        offline: 'Offline',
+    };
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="animate-spin h-8 w-8 border-2 border-primary-500 border-t-transparent rounded-full" />
+            </div>
+        );
+    }
+
+    if (error || !server) {
+        return (
+            <div className="glass-card rounded-xl p-8 text-center">
+                <p className="text-red-400 mb-2">{error || 'Server not found'}</p>
+                <Link href="/dashboard/servers" className="text-primary-400 hover:underline">
+                    Back to Servers
+                </Link>
+            </div>
+        );
+    }
+
+    const isRunning = server.status === 'running';
+    const isStopped = server.status === 'stopped' || server.status === 'offline';
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -113,22 +189,39 @@ export default async function ServerDetailPage({ params }: { params: Promise<{ i
                     <div>
                         <div className="flex items-center gap-3">
                             <h1 className="text-2xl font-bold text-foreground">{server.name}</h1>
-                            <span className={`status-dot ${statusColors[server.status]}`} />
+                            <span className={`status-dot ${statusColors[server.status] || 'status-stopped'}`} />
+                            <span className="text-sm text-muted-foreground">{statusLabels[server.status] || server.status}</span>
                         </div>
-                        <p className="text-muted-foreground">{server.game} • {server.address}</p>
+                        <p className="text-muted-foreground">{server.docker_image}</p>
                     </div>
                 </div>
 
                 {/* Controls */}
                 <div className="flex items-center gap-2">
-                    <ControlButton
-                        icon={<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="14" y="4" width="4" height="16" rx="1" /><rect x="6" y="4" width="4" height="16" rx="1" /></svg>}
-                        label="Stop"
-                        variant="danger"
-                    />
+                    {isStopped ? (
+                        <ControlButton
+                            icon={<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3" /></svg>}
+                            label="Start"
+                            variant="success"
+                            loading={actionLoading === 'start'}
+                            onClick={() => handleAction('start')}
+                        />
+                    ) : (
+                        <ControlButton
+                            icon={<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="14" y="4" width="4" height="16" rx="1" /><rect x="6" y="4" width="4" height="16" rx="1" /></svg>}
+                            label="Stop"
+                            variant="danger"
+                            loading={actionLoading === 'stop'}
+                            onClick={() => handleAction('stop')}
+                            disabled={!isRunning}
+                        />
+                    )}
                     <ControlButton
                         icon={<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" /><path d="M16 16h5v5" /></svg>}
                         label="Restart"
+                        loading={actionLoading === 'restart'}
+                        onClick={() => handleAction('restart')}
+                        disabled={!isRunning}
                     />
                     <Link
                         href={`/dashboard/servers/${server.id}/console`}
@@ -137,26 +230,37 @@ export default async function ServerDetailPage({ params }: { params: Promise<{ i
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4,17 10,11 4,5" /><line x1="12" x2="20" y1="19" y2="19" /></svg>
                         Console
                     </Link>
+                    <ControlButton
+                        icon={<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>}
+                        label="Delete"
+                        variant="danger"
+                        loading={actionLoading === 'delete'}
+                        onClick={() => {
+                            if (confirm('Are you sure you want to delete this server? This cannot be undone.')) {
+                                handleAction('delete');
+                            }
+                        }}
+                    />
                 </div>
             </div>
 
             {/* Quick stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="glass-card rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-foreground">{server.players.current}</p>
-                    <p className="text-sm text-muted-foreground">Players Online</p>
+                    <p className="text-2xl font-bold text-foreground">{statusLabels[server.status] || server.status}</p>
+                    <p className="text-sm text-muted-foreground">Status</p>
                 </div>
                 <div className="glass-card rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-foreground">{server.uptime}</p>
-                    <p className="text-sm text-muted-foreground">Uptime</p>
+                    <p className="text-2xl font-bold text-foreground">{server.memory_limit} MB</p>
+                    <p className="text-sm text-muted-foreground">Memory Limit</p>
                 </div>
                 <div className="glass-card rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-foreground">{server.cpu}%</p>
-                    <p className="text-sm text-muted-foreground">CPU Usage</p>
+                    <p className="text-2xl font-bold text-foreground">{server.cpu_limit}%</p>
+                    <p className="text-sm text-muted-foreground">CPU Limit</p>
                 </div>
                 <div className="glass-card rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold gradient-text">{server.players.max}</p>
-                    <p className="text-sm text-muted-foreground">Max Players</p>
+                    <p className="text-2xl font-bold gradient-text">{server.disk_limit} MB</p>
+                    <p className="text-sm text-muted-foreground">Disk Limit</p>
                 </div>
             </div>
 
@@ -164,23 +268,23 @@ export default async function ServerDetailPage({ params }: { params: Promise<{ i
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <ResourceGauge
                     label="Memory"
-                    value={server.memory.used}
-                    max={server.memory.total}
-                    unit="GB"
+                    value={server.memory_used || 0}
+                    max={server.memory_limit}
+                    unit="MB"
                     color="primary"
                 />
                 <ResourceGauge
                     label="CPU"
-                    value={server.cpu}
-                    max={100}
+                    value={server.cpu_used || 0}
+                    max={server.cpu_limit}
                     unit="%"
                     color="accent"
                 />
                 <ResourceGauge
                     label="Disk"
-                    value={server.disk.used}
-                    max={server.disk.total}
-                    unit="GB"
+                    value={server.disk_used || 0}
+                    max={server.disk_limit}
+                    unit="MB"
                     color="primary"
                 />
             </div>

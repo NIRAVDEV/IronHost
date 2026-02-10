@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,11 +15,12 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ironhost/agent/internal/docker"
+	agentpb "github.com/ironhost/agent/internal/grpc/ironhost/v1"
 )
 
 // AgentService implements the gRPC AgentService
 type AgentService struct {
-	UnimplementedAgentServiceServer
+	agentpb.UnimplementedAgentServiceServer
 	nodeID    string
 	dockerMgr *docker.Manager
 	dataDir   string
@@ -39,12 +42,12 @@ func NewAgentService(nodeID string, dockerMgr *docker.Manager, dataDir string) *
 
 // RegisterAgentServiceServer registers the agent service with a gRPC server
 func RegisterAgentServiceServer(s *grpc.Server, srv *AgentService) {
-	// This would use the generated protobuf code
-	// pb.RegisterAgentServiceServer(s, srv)
+	agentpb.RegisterAgentServiceServer(s, srv)
 }
 
 // CreateServer creates a new game server container
-func (s *AgentService) CreateServer(ctx context.Context, req *CreateServerRequest) (*CreateServerResponse, error) {
+func (s *AgentService) CreateServer(ctx context.Context, req *agentpb.CreateServerRequest) (*agentpb.CreateServerResponse, error) {
+	fmt.Printf("📝 Received CreateServer request for: %s\n", req.Name)
 	serverID := req.ServerId
 	if serverID == "" {
 		serverID = uuid.New().String()
@@ -63,7 +66,26 @@ func (s *AgentService) CreateServer(ctx context.Context, req *CreateServerReques
 	}
 
 	// Data directory for this server
-	dataPath := fmt.Sprintf("%s/servers/%s", s.dataDir, serverID)
+	// Ensure absolute path if possible, or relative to current CWD
+	relPath := fmt.Sprintf("%s/servers/%s", s.dataDir, serverID)
+	dataPath, err := filepath.Abs(relPath)
+	if err != nil {
+		fmt.Printf("❌ Failed to resolve absolute path: %v\n", err)
+		return &agentpb.CreateServerResponse{
+			Success:      false,
+			ErrorMessage: fmt.Sprintf("failed to resolve path: %v", err),
+		}, nil
+	}
+	fmt.Printf("📂 Data Path resolved to: %s\n", dataPath)
+
+	// Create the directory on the host (Agent's filesystem)
+	if err := os.MkdirAll(dataPath, 0755); err != nil {
+		fmt.Printf("❌ Failed to create data directory: %v\n", err)
+		return &agentpb.CreateServerResponse{
+			Success:      false,
+			ErrorMessage: fmt.Sprintf("failed to create data directory: %v", err),
+		}, nil
+	}
 
 	// Create container config
 	cfg := docker.ServerConfig{
@@ -77,53 +99,59 @@ func (s *AgentService) CreateServer(ctx context.Context, req *CreateServerReques
 		DataPath:    dataPath,
 	}
 
+	fmt.Printf("⬇️  Pulling image: %s\n", cfg.Image)
 	// Pull the image first
 	if err := s.dockerMgr.PullImage(ctx, cfg.Image); err != nil {
-		return &CreateServerResponse{
+		fmt.Printf("❌ Failed to pull image: %v\n", err)
+		return &agentpb.CreateServerResponse{
 			Success:      false,
 			ErrorMessage: fmt.Sprintf("failed to pull image: %v", err),
 		}, nil
 	}
 
+	fmt.Printf("🏗️  Creating container for %s...\n", cfg.Name)
 	// Create the container
 	containerID, err := s.dockerMgr.CreateContainer(ctx, cfg)
 	if err != nil {
-		return &CreateServerResponse{
+		fmt.Printf("❌ Failed to create container: %v\n", err)
+		return &agentpb.CreateServerResponse{
 			Success:      false,
 			ErrorMessage: fmt.Sprintf("failed to create container: %v", err),
 		}, nil
 	}
+
+	fmt.Printf("✅ Server created successfully! Container ID: %s\n", containerID)
 
 	// Track the container
 	s.mu.Lock()
 	s.containers[serverID] = containerID
 	s.mu.Unlock()
 
-	return &CreateServerResponse{
+	return &agentpb.CreateServerResponse{
 		Success:     true,
 		ContainerId: containerID,
 	}, nil
 }
 
 // StartServer starts a stopped server container
-func (s *AgentService) StartServer(ctx context.Context, req *ServerIdentifier) (*ServerActionResponse, error) {
+func (s *AgentService) StartServer(ctx context.Context, req *agentpb.ServerIdentifier) (*agentpb.ServerActionResponse, error) {
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
-		return &ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
 	if err := s.dockerMgr.StartContainer(ctx, containerID); err != nil {
-		return &ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
-	return &ServerActionResponse{Success: true}, nil
+	return &agentpb.ServerActionResponse{Success: true}, nil
 }
 
 // StopServer stops a running server container
-func (s *AgentService) StopServer(ctx context.Context, req *StopServerRequest) (*ServerActionResponse, error) {
+func (s *AgentService) StopServer(ctx context.Context, req *agentpb.StopServerRequest) (*agentpb.ServerActionResponse, error) {
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
-		return &ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
 	timeout := 30
@@ -132,41 +160,41 @@ func (s *AgentService) StopServer(ctx context.Context, req *StopServerRequest) (
 	}
 
 	if err := s.dockerMgr.StopContainer(ctx, containerID, timeout); err != nil {
-		return &ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
-	return &ServerActionResponse{Success: true}, nil
+	return &agentpb.ServerActionResponse{Success: true}, nil
 }
 
 // RestartServer restarts a server container
-func (s *AgentService) RestartServer(ctx context.Context, req *ServerIdentifier) (*ServerActionResponse, error) {
+func (s *AgentService) RestartServer(ctx context.Context, req *agentpb.ServerIdentifier) (*agentpb.ServerActionResponse, error) {
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
-		return &ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
 	// Stop then start
 	if err := s.dockerMgr.StopContainer(ctx, containerID, 30); err != nil {
-		return &ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
 	if err := s.dockerMgr.StartContainer(ctx, containerID); err != nil {
-		return &ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
-	return &ServerActionResponse{Success: true}, nil
+	return &agentpb.ServerActionResponse{Success: true}, nil
 }
 
 // DeleteServer removes a server container
-func (s *AgentService) DeleteServer(ctx context.Context, req *ServerIdentifier) (*ServerActionResponse, error) {
+func (s *AgentService) DeleteServer(ctx context.Context, req *agentpb.ServerIdentifier) (*agentpb.ServerActionResponse, error) {
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
-		return &ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
 	// Force remove the container
 	if err := s.dockerMgr.RemoveContainer(ctx, containerID, true); err != nil {
-		return &ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
 	// Remove from tracking
@@ -174,30 +202,30 @@ func (s *AgentService) DeleteServer(ctx context.Context, req *ServerIdentifier) 
 	delete(s.containers, req.ServerId)
 	s.mu.Unlock()
 
-	return &ServerActionResponse{Success: true}, nil
+	return &agentpb.ServerActionResponse{Success: true}, nil
 }
 
 // GetServerStatus returns the current status of a server
-func (s *AgentService) GetServerStatus(ctx context.Context, req *ServerIdentifier) (*ServerState, error) {
+func (s *AgentService) GetServerStatus(ctx context.Context, req *agentpb.ServerIdentifier) (*agentpb.ServerState, error) {
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
-		return &ServerState{
+		return &agentpb.ServerState{
 			ServerId: req.ServerId,
-			Status:   ServerStatus_SERVER_STATUS_OFFLINE,
+			Status:   agentpb.ServerStatus_SERVER_STATUS_OFFLINE,
 		}, nil
 	}
 
 	stats, err := s.dockerMgr.GetContainerStats(ctx, containerID)
 	if err != nil {
-		return &ServerState{
+		return &agentpb.ServerState{
 			ServerId: req.ServerId,
-			Status:   ServerStatus_SERVER_STATUS_OFFLINE,
+			Status:   agentpb.ServerStatus_SERVER_STATUS_OFFLINE,
 		}, nil
 	}
 
-	return &ServerState{
+	return &agentpb.ServerState{
 		ServerId:         req.ServerId,
-		Status:           ServerStatus_SERVER_STATUS_RUNNING,
+		Status:           agentpb.ServerStatus_SERVER_STATUS_RUNNING,
 		MemoryUsageBytes: int64(stats.MemoryStats.Usage),
 		CpuUsagePercent:  calculateCPUPercent(stats),
 		LastUpdated:      timestamppb.Now(),
@@ -205,21 +233,21 @@ func (s *AgentService) GetServerStatus(ctx context.Context, req *ServerIdentifie
 }
 
 // ListServers returns all servers on this node
-func (s *AgentService) ListServers(ctx context.Context, _ *emptypb.Empty) (*ListServersResponse, error) {
+func (s *AgentService) ListServers(ctx context.Context, _ *emptypb.Empty) (*agentpb.ListServersResponse, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	servers := make([]*ServerState, 0, len(s.containers))
+	servers := make([]*agentpb.ServerState, 0, len(s.containers))
 	for serverID := range s.containers {
-		state, _ := s.GetServerStatus(ctx, &ServerIdentifier{ServerId: serverID})
+		state, _ := s.GetServerStatus(ctx, &agentpb.ServerIdentifier{ServerId: serverID})
 		servers = append(servers, state)
 	}
 
-	return &ListServersResponse{Servers: servers}, nil
+	return &agentpb.ListServersResponse{Servers: servers}, nil
 }
 
 // StreamConsole streams server console output
-func (s *AgentService) StreamConsole(req *ServerIdentifier, stream AgentService_StreamConsoleServer) error {
+func (s *AgentService) StreamConsole(req *agentpb.ServerIdentifier, stream agentpb.AgentService_StreamConsoleServer) error {
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
 		return err
@@ -246,7 +274,7 @@ func (s *AgentService) StreamConsole(req *ServerIdentifier, stream AgentService_
 				return err
 			}
 
-			output := &ConsoleOutput{
+			output := &agentpb.ConsoleOutput{
 				ServerId:  req.ServerId,
 				Line:      string(buf[:n]),
 				Timestamp: time.Now().Unix(),
@@ -260,7 +288,7 @@ func (s *AgentService) StreamConsole(req *ServerIdentifier, stream AgentService_
 }
 
 // SendCommand sends a command to the server console
-func (s *AgentService) SendCommand(ctx context.Context, req *SendCommandRequest) (*emptypb.Empty, error) {
+func (s *AgentService) SendCommand(ctx context.Context, req *agentpb.SendCommandRequest) (*emptypb.Empty, error) {
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
 		return nil, err
@@ -274,17 +302,17 @@ func (s *AgentService) SendCommand(ctx context.Context, req *SendCommandRequest)
 }
 
 // GetNodeStats returns resource stats for this node
-func (s *AgentService) GetNodeStats(ctx context.Context, _ *emptypb.Empty) (*NodeStats, error) {
+func (s *AgentService) GetNodeStats(ctx context.Context, _ *emptypb.Empty) (*agentpb.NodeStats, error) {
 	// TODO: Implement proper system resource stats
-	return &NodeStats{
+	return &agentpb.NodeStats{
 		NodeId:            s.nodeID,
 		RunningContainers: int32(len(s.containers)),
 	}, nil
 }
 
 // Ping responds to health checks
-func (s *AgentService) Ping(ctx context.Context, _ *emptypb.Empty) (*PingResponse, error) {
-	return &PingResponse{
+func (s *AgentService) Ping(ctx context.Context, _ *emptypb.Empty) (*agentpb.PingResponse, error) {
+	return &agentpb.PingResponse{
 		NodeId:    s.nodeID,
 		Version:   "0.1.0",
 		Timestamp: time.Now().Unix(),
@@ -320,113 +348,3 @@ func calculateCPUPercent(stats interface{}) float64 {
 	// TODO: Implement proper CPU calculation
 	return 0.0
 }
-
-// Proto message types (placeholders - would be generated from .proto)
-type CreateServerRequest struct {
-	ServerId    string
-	Name        string
-	DockerImage string
-	Limits      *ResourceLimits
-	Allocations []*Allocation
-	Environment []*EnvVar
-}
-
-type CreateServerResponse struct {
-	Success      bool
-	ContainerId  string
-	ErrorMessage string
-}
-
-type ServerIdentifier struct {
-	ServerId string
-}
-
-type StopServerRequest struct {
-	ServerId       string
-	TimeoutSeconds int32
-}
-
-type ServerActionResponse struct {
-	Success      bool
-	ErrorMessage string
-}
-
-type ResourceLimits struct {
-	MemoryMb   int64
-	DiskMb     int64
-	CpuPercent int32
-}
-
-type Allocation struct {
-	Id        string
-	IpAddress string
-	Port      int32
-	IsPrimary bool
-}
-
-type EnvVar struct {
-	Key   string
-	Value string
-}
-
-type ServerStatus int32
-
-const (
-	ServerStatus_SERVER_STATUS_UNSPECIFIED ServerStatus = 0
-	ServerStatus_SERVER_STATUS_INSTALLING  ServerStatus = 1
-	ServerStatus_SERVER_STATUS_OFFLINE     ServerStatus = 2
-	ServerStatus_SERVER_STATUS_STARTING    ServerStatus = 3
-	ServerStatus_SERVER_STATUS_RUNNING     ServerStatus = 4
-	ServerStatus_SERVER_STATUS_STOPPING    ServerStatus = 5
-	ServerStatus_SERVER_STATUS_SUSPENDED   ServerStatus = 6
-)
-
-type ServerState struct {
-	ServerId         string
-	Status           ServerStatus
-	MemoryUsageBytes int64
-	DiskUsageBytes   int64
-	CpuUsagePercent  float64
-	UptimeSeconds    int64
-	LastUpdated      *timestamppb.Timestamp
-}
-
-type ListServersResponse struct {
-	Servers []*ServerState
-}
-
-type ConsoleOutput struct {
-	ServerId  string
-	Line      string
-	Timestamp int64
-	IsError   bool
-}
-
-type SendCommandRequest struct {
-	ServerId string
-	Command  string
-}
-
-type NodeStats struct {
-	NodeId               string
-	TotalMemoryBytes     int64
-	AvailableMemoryBytes int64
-	TotalDiskBytes       int64
-	AvailableDiskBytes   int64
-	CpuUsagePercent      float64
-	RunningContainers    int32
-	UptimeSeconds        int64
-}
-
-type PingResponse struct {
-	NodeId    string
-	Version   string
-	Timestamp int64
-}
-
-type AgentService_StreamConsoleServer interface {
-	Send(*ConsoleOutput) error
-	Context() context.Context
-}
-
-type UnimplementedAgentServiceServer struct{}

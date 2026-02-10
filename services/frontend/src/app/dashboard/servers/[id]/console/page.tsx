@@ -2,28 +2,32 @@
 
 import Link from 'next/link';
 import { useState, useEffect, useRef, use } from 'react';
+import { serversApi, Server } from '@/lib/api';
 
 export default function ConsolePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
-
+    const [server, setServer] = useState<Server | null>(null);
     const [logs, setLogs] = useState<string[]>([
-        '[12:34:56] [Server thread/INFO]: Starting minecraft server version 1.20.4',
-        '[12:34:57] [Server thread/INFO]: Loading properties',
-        '[12:34:57] [Server thread/INFO]: Default game type: SURVIVAL',
-        '[12:34:58] [Server thread/INFO]: Generating keypair',
-        '[12:34:59] [Server thread/INFO]: Starting Minecraft server on *:25565',
-        '[12:35:00] [Server thread/INFO]: Preparing level "world"',
-        '[12:35:05] [Server thread/INFO]: Preparing spawn area: 0%',
-        '[12:35:10] [Server thread/INFO]: Preparing spawn area: 50%',
-        '[12:35:15] [Server thread/INFO]: Preparing spawn area: 100%',
-        '[12:35:16] [Server thread/INFO]: Done (20.123s)! For help, type "help"',
-        '[12:36:22] [Server thread/INFO]: Player123 joined the game',
-        '[12:37:45] [Server thread/INFO]: <Player123> Hello everyone!',
-        '[12:38:01] [Server thread/INFO]: GamerPro logged in with entity id 42',
-        '[12:39:12] [Server thread/INFO]: <GamerPro> Hey! Nice server!',
+        'Connecting to server console...',
     ]);
     const [command, setCommand] = useState('');
+    const [isSending, setIsSending] = useState(false);
     const terminalRef = useRef<HTMLDivElement>(null);
+
+    // Fetch server info
+    useEffect(() => {
+        async function fetchServer() {
+            try {
+                const data = await serversApi.get(id);
+                setServer(data);
+                setLogs(prev => [...prev, `Connected to ${data.name} (${data.status})`]);
+            } catch (err) {
+                console.error('Failed to fetch server:', err);
+                setLogs(prev => [...prev, '[ERROR] Failed to connect to server']);
+            }
+        }
+        fetchServer();
+    }, [id]);
 
     // Auto scroll to bottom
     useEffect(() => {
@@ -32,29 +36,27 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
         }
     }, [logs]);
 
-    // Simulate new logs coming in
-    useEffect(() => {
-        const interval = setInterval(() => {
-            const randomLogs = [
-                '[Server thread/INFO]: Saving chunks for level \'world\'',
-                '[Server thread/INFO]: Saved the game',
-                '[Server thread/INFO]: Player moved to spawn',
-            ];
-            const randomLog = randomLogs[Math.floor(Math.random() * randomLogs.length)];
-            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
-            setLogs(prev => [...prev, `[${time}] ${randomLog}`]);
-        }, 8000);
-
-        return () => clearInterval(interval);
-    }, []);
-
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!command.trim()) return;
+        if (!command.trim() || isSending) return;
 
         const time = new Date().toLocaleTimeString('en-US', { hour12: false });
         setLogs(prev => [...prev, `[${time}] [CONSOLE] > ${command}`]);
+
+        const cmd = command;
         setCommand('');
+        setIsSending(true);
+
+        try {
+            await serversApi.sendCommand(id, cmd);
+            const time2 = new Date().toLocaleTimeString('en-US', { hour12: false });
+            setLogs(prev => [...prev, `[${time2}] Command sent successfully`]);
+        } catch (err) {
+            const time2 = new Date().toLocaleTimeString('en-US', { hour12: false });
+            setLogs(prev => [...prev, `[${time2}] [ERROR] Failed to send command: ${err}`]);
+        } finally {
+            setIsSending(false);
+        }
     };
 
     return (
@@ -72,12 +74,14 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                     </Link>
                     <div>
                         <h1 className="text-xl font-bold text-foreground">Console</h1>
-                        <p className="text-sm text-muted-foreground">Survival SMP</p>
+                        <p className="text-sm text-muted-foreground">{server?.name || 'Loading...'}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="status-dot status-running" />
-                    <span className="text-sm text-muted-foreground">Connected</span>
+                    <span className={`status-dot ${server?.status === 'running' ? 'status-running' : 'status-stopped'}`} />
+                    <span className="text-sm text-muted-foreground">
+                        {server?.status === 'running' ? 'Connected' : server?.status || 'Connecting...'}
+                    </span>
                 </div>
             </div>
 
@@ -92,9 +96,10 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                         <div
                             key={i}
                             className={`leading-relaxed ${log.includes('[WARN]') ? 'text-yellow-400' :
-                                    log.includes('[ERROR]') ? 'text-red-400' :
-                                        log.includes('joined the game') || log.includes('logged in') ? 'text-green-400' :
-                                            log.includes('[CONSOLE]') ? 'text-cyan-400' :
+                                log.includes('[ERROR]') ? 'text-red-400' :
+                                    log.includes('Connected') ? 'text-green-400' :
+                                        log.includes('[CONSOLE]') ? 'text-cyan-400' :
+                                            log.includes('Command sent') ? 'text-green-400' :
                                                 'text-gray-300'
                                 }`}
                         >
@@ -111,14 +116,16 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                             type="text"
                             value={command}
                             onChange={(e) => setCommand(e.target.value)}
-                            placeholder="Enter command..."
-                            className="flex-1 bg-transparent text-foreground font-mono text-sm placeholder:text-muted-foreground focus:outline-none"
+                            placeholder={server?.status === 'running' ? 'Enter command...' : 'Server is not running'}
+                            disabled={server?.status !== 'running' || isSending}
+                            className="flex-1 bg-transparent text-foreground font-mono text-sm placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                         />
                         <button
                             type="submit"
-                            className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 transition-colors"
+                            disabled={server?.status !== 'running' || isSending}
+                            className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 transition-colors disabled:opacity-50"
                         >
-                            Send
+                            {isSending ? 'Sending...' : 'Send'}
                         </button>
                     </div>
                 </form>
