@@ -120,13 +120,24 @@ func (s *AgentService) CreateServer(ctx context.Context, req *agentpb.CreateServ
 		}, nil
 	}
 
-	fmt.Printf("✅ Server created successfully! Container ID: %s\n", containerID)
+	fmt.Printf("✅ Container created! ID: %s\n", containerID)
 
 	// Track the container
 	s.mu.Lock()
 	s.containers[serverID] = containerID
 	s.mu.Unlock()
 
+	// Start the container
+	fmt.Printf("▶️  Starting container %s...\n", containerID)
+	if err := s.dockerMgr.StartContainer(ctx, containerID); err != nil {
+		fmt.Printf("❌ Failed to start container: %v\n", err)
+		return &agentpb.CreateServerResponse{
+			Success:      false,
+			ErrorMessage: fmt.Sprintf("container created but failed to start: %v", err),
+		}, nil
+	}
+
+	fmt.Printf("🎉 Server %s is now RUNNING!\n", cfg.Name)
 	return &agentpb.CreateServerResponse{
 		Success:     true,
 		ContainerId: containerID,
