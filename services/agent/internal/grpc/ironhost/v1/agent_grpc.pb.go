@@ -30,6 +30,7 @@ const (
 	AgentService_ListServers_FullMethodName     = "/ironhost.v1.AgentService/ListServers"
 	AgentService_StreamConsole_FullMethodName   = "/ironhost.v1.AgentService/StreamConsole"
 	AgentService_SendCommand_FullMethodName     = "/ironhost.v1.AgentService/SendCommand"
+	AgentService_GetLogs_FullMethodName         = "/ironhost.v1.AgentService/GetLogs"
 	AgentService_GetNodeStats_FullMethodName    = "/ironhost.v1.AgentService/GetNodeStats"
 	AgentService_Ping_FullMethodName            = "/ironhost.v1.AgentService/Ping"
 )
@@ -53,6 +54,7 @@ type AgentServiceClient interface {
 	// Console interaction
 	StreamConsole(ctx context.Context, in *ServerIdentifier, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ConsoleOutput], error)
 	SendCommand(ctx context.Context, in *SendCommandRequest, opts ...grpc.CallOption) (*ServerActionResponse, error)
+	GetLogs(ctx context.Context, in *ServerIdentifier, opts ...grpc.CallOption) (*ServerActionResponse, error)
 	// Node health
 	GetNodeStats(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*NodeStats, error)
 	Ping(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*PingResponse, error)
@@ -165,6 +167,16 @@ func (c *agentServiceClient) SendCommand(ctx context.Context, in *SendCommandReq
 	return out, nil
 }
 
+func (c *agentServiceClient) GetLogs(ctx context.Context, in *ServerIdentifier, opts ...grpc.CallOption) (*ServerActionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServerActionResponse)
+	err := c.cc.Invoke(ctx, AgentService_GetLogs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentServiceClient) GetNodeStats(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*NodeStats, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(NodeStats)
@@ -204,6 +216,7 @@ type AgentServiceServer interface {
 	// Console interaction
 	StreamConsole(*ServerIdentifier, grpc.ServerStreamingServer[ConsoleOutput]) error
 	SendCommand(context.Context, *SendCommandRequest) (*ServerActionResponse, error)
+	GetLogs(context.Context, *ServerIdentifier) (*ServerActionResponse, error)
 	// Node health
 	GetNodeStats(context.Context, *emptypb.Empty) (*NodeStats, error)
 	Ping(context.Context, *emptypb.Empty) (*PingResponse, error)
@@ -243,6 +256,9 @@ func (UnimplementedAgentServiceServer) StreamConsole(*ServerIdentifier, grpc.Ser
 }
 func (UnimplementedAgentServiceServer) SendCommand(context.Context, *SendCommandRequest) (*ServerActionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendCommand not implemented")
+}
+func (UnimplementedAgentServiceServer) GetLogs(context.Context, *ServerIdentifier) (*ServerActionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetLogs not implemented")
 }
 func (UnimplementedAgentServiceServer) GetNodeStats(context.Context, *emptypb.Empty) (*NodeStats, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetNodeStats not implemented")
@@ -426,6 +442,24 @@ func _AgentService_SendCommand_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_GetLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServerIdentifier)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).GetLogs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_GetLogs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).GetLogs(ctx, req.(*ServerIdentifier))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentService_GetNodeStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -500,6 +534,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendCommand",
 			Handler:    _AgentService_SendCommand_Handler,
+		},
+		{
+			MethodName: "GetLogs",
+			Handler:    _AgentService_GetLogs_Handler,
 		},
 		{
 			MethodName: "GetNodeStats",

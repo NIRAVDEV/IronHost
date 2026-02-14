@@ -334,6 +334,21 @@ func (s *AgentService) SendCommand(ctx context.Context, req *agentpb.SendCommand
 	return &agentpb.ServerActionResponse{Success: true, ErrorMessage: output}, nil
 }
 
+// GetLogs returns the last 100 lines of server container logs (non-streaming snapshot)
+func (s *AgentService) GetLogs(ctx context.Context, req *agentpb.ServerIdentifier) (*agentpb.ServerActionResponse, error) {
+	containerID, err := s.getContainerID(req.ServerId)
+	if err != nil {
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
+
+	logText, err := s.dockerMgr.GetLogs(ctx, containerID, 100)
+	if err != nil {
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
+
+	return &agentpb.ServerActionResponse{Success: true, ErrorMessage: logText}, nil
+}
+
 // GetNodeStats returns resource stats for this node
 func (s *AgentService) GetNodeStats(ctx context.Context, _ *emptypb.Empty) (*agentpb.NodeStats, error) {
 	// TODO: Implement proper system resource stats

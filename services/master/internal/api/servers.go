@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -387,7 +388,7 @@ func (h *ServerHandler) SendCommand(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "command sent", "output": output})
 }
 
-// GetLogs returns recent server logs via Agent's StreamConsole RPC
+// GetLogs returns recent server logs via Agent's GetLogs RPC (non-streaming snapshot)
 func (h *ServerHandler) GetLogs(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
@@ -412,22 +413,20 @@ func (h *ServerHandler) GetLogs(c *fiber.Ctx) error {
 	client := agentpb.NewAgentServiceClient(conn)
 	ctx := metadata.AppendToOutgoingContext(c.Context(), "authorization", "Bearer "+node.DaemonTokenHash)
 
-	// Call StreamConsole with a short deadline to collect available lines
-	streamCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
-	stream, err := client.StreamConsole(streamCtx, &agentpb.ServerIdentifier{ServerId: server.ID.String()})
+	resp, err := client.GetLogs(ctx, &agentpb.ServerIdentifier{ServerId: server.ID.String()})
 	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "failed to stream console: "+err.Error())
+		return fiber.NewError(fiber.StatusInternalServerError, "GetLogs RPC failed: "+err.Error())
 	}
 
+	// Split the log text into lines
+	logText := resp.ErrorMessage
 	var lines []string
-	for {
-		msg, err := stream.Recv()
-		if err != nil {
-			break // Timeout or end of stream
+	if logText != "" {
+		for _, line := range strings.Split(logText, "\n") {
+			if line != "" {
+				lines = append(lines, line)
+			}
 		}
-		lines = append(lines, msg.Line)
 	}
 
 	return c.JSON(fiber.Map{"logs": lines})

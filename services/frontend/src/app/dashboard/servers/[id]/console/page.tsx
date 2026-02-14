@@ -6,33 +6,29 @@ import { serversApi, Server } from '@/lib/api';
 
 // ── Noise filter: hide logs a customer doesn't care about ──
 const NOISE_PATTERNS = [
-    /\[init\]/,                              // Docker init messages
-    /Unpacking /,                            // Library extraction
-    /^WARNING:/,                             // Java warnings
-    /\[mc-image-helper\]/,                   // MC image helper
-    /^Starting net\.minecraft\.server/,      // Raw startup (covered by [Server thread])
-    /Thread RCON Client/,                    // RCON internal connect/disconnect
-    /Thread RCON Listener/,                  // RCON listener threads
-    /RCON running on/,                       // RCON bind message
-    /RCON Client .* shutting down/,          // RCON disconnect
-    /mc-server-runner/,                      // Server runner internal messages
-    /Stopping with rcon-cli/,               // Internal stop mechanism
+    /\[init\]/i,
+    /Unpacking /,
+    /^WARNING:/,
+    /\[mc-image-helper\]/,
+    /^Starting net\.minecraft\.server/,
+    /Thread RCON Client/,
+    /Thread RCON Listener/,
+    /RCON running on/,
+    /RCON Client .* shutting down/,
+    /mc-server-runner/,
+    /Stopping with rcon-cli/,
 ];
 
-function shouldShowLog(rawLine: string): boolean {
-    // Strip timestamps
-    const line = rawLine
-        .replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s*/, '')
-        .replace(/^\d{4}-\d{2}-\d{2}\s[\d:.]+\s\|\s*/, '');
-    if (line.trim().length === 0) return false;
+function isNoisy(raw: string): boolean {
+    const line = raw.replace(/[\x00-\x08]/g, '').replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s*/, '');
+    if (line.trim().length === 0) return true;
     for (const p of NOISE_PATTERNS) {
-        if (p.test(line)) return false;
+        if (p.test(line)) return true;
     }
-    return true;
+    return false;
 }
 
-function cleanLine(raw: string): string {
-    // Remove Docker header bytes + timestamps
+function clean(raw: string): string {
     return raw
         .replace(/[\x00-\x08]/g, '')
         .replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s*/, '')
@@ -41,33 +37,34 @@ function cleanLine(raw: string): string {
 
 function colorFor(line: string): string {
     if (line.startsWith('>')) return 'text-cyan-400';
-    if (line.includes('[WARN]') || line.includes('WARN')) return 'text-yellow-400';
-    if (line.includes('[ERROR]') || line.includes('ERROR')) return 'text-red-400';
+    if (line.includes('[WARN]')) return 'text-yellow-400';
+    if (line.includes('[ERROR]') || line.startsWith('§c')) return 'text-red-400';
     if (line.includes('joined the game') || line.includes('logged in')) return 'text-green-400';
     if (line.includes('left the game') || line.includes('lost connection')) return 'text-yellow-300';
     if (line.includes('Done (')) return 'text-green-400';
     if (line.includes('Starting minecraft server')) return 'text-blue-400';
-    if (line.includes('Stopping server') || line.includes('Saving')) return 'text-orange-400';
-    // Plain rcon response lines (no brackets, not a command)
+    if (line.includes('Stopping') || line.includes('Saving')) return 'text-orange-400';
+    // Command responses (no bracket prefix, not a user command)
     if (!line.startsWith('[') && !line.startsWith('>') && line.length > 0) return 'text-purple-400';
     return 'text-gray-300';
 }
 
-// ────────────────────────────────────────────────────
-
 export default function ConsolePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const [server, setServer] = useState<Server | null>(null);
-    const [lines, setLines] = useState<string[]>([]);          // The single display array
+
+    // Two separate arrays: Docker logs (replaced each poll) + local lines (persist)
+    const [dockerLogs, setDockerLogs] = useState<string[]>([]);
+    const [localLines, setLocalLines] = useState<string[]>([]);
+    const [cleared, setCleared] = useState(false);
+
     const [command, setCommand] = useState('');
     const [isSending, setIsSending] = useState(false);
     const terminalRef = useRef<HTMLDivElement>(null);
     const autoScroll = useRef(true);
 
-    // Diff tracking: last raw Docker line we processed
-    const lastSeenLine = useRef<string>('');
-    // Track whether first fetch has happened
-    const firstFetch = useRef(true);
+    // Combined display: docker logs + local lines
+    const displayLines = cleared ? localLines : [...dockerLogs, ...localLines];
 
     // ── Server info polling ──
     useEffect(() => {
@@ -79,48 +76,39 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
         return () => clearInterval(i);
     }, [id]);
 
-    // ── Log polling: append-only with diff detection ──
+    // ── Log polling: always get the full snapshot, replace docker logs ──
     const fetchLogs = useCallback(async () => {
         try {
-            const raw = await serversApi.getLogs(id);
-            if (!raw || raw.length === 0) return;
-
-            let newRaw: string[];
-
-            if (firstFetch.current || !lastSeenLine.current) {
-                // First fetch → all lines are new
-                newRaw = raw;
-                firstFetch.current = false;
-            } else {
-                // Find our "bookmark" in the new batch
-                const idx = raw.lastIndexOf(lastSeenLine.current);
-                if (idx >= 0) {
-                    newRaw = raw.slice(idx + 1); // only lines AFTER the bookmark
-                } else {
-                    // Bookmark not found → server restarted, reset display
-                    setLines([]);
-                    newRaw = raw;
-                }
+            const raw: string[] = await serversApi.getLogs(id);
+            if (!raw || raw.length === 0) {
+                if (!cleared) setDockerLogs([]);
+                return;
             }
 
-            if (newRaw.length > 0) {
-                // Update bookmark to the very last raw line
-                lastSeenLine.current = raw[raw.length - 1];
+            // Filter + clean
+            const filtered = raw
+                .filter(line => !isNoisy(line))
+                .map(clean)
+                .filter(l => l.trim().length > 0);
 
-                // Clean + filter
-                const cleaned = newRaw
-                    .filter(shouldShowLog)
-                    .map(cleanLine)
-                    .filter(l => l.trim().length > 0);
-
-                if (cleaned.length > 0) {
-                    setLines(prev => [...prev, ...cleaned]);
+            // If cleared, only show NEW lines that weren't in the pre-clear snapshot
+            // We detect "new content" by checking if Docker log count changed significantly
+            setDockerLogs(prev => {
+                if (cleared) {
+                    // Only show if there are new lines beyond what was cleared
+                    if (filtered.length > prev.length + localLines.length) {
+                        // New content after clear — show only the delta
+                        setCleared(false);
+                        return filtered;
+                    }
+                    return prev; // Keep empty during cleared state
                 }
-            }
+                return filtered;
+            });
         } catch {
-            // server might not be running
+            // Server might not be running
         }
-    }, [id]);
+    }, [id, cleared, localLines.length]);
 
     useEffect(() => {
         fetchLogs();
@@ -133,7 +121,7 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
         if (autoScroll.current && terminalRef.current) {
             terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
         }
-    }, [lines]);
+    }, [displayLines.length]);
 
     const handleScroll = () => {
         if (!terminalRef.current) return;
@@ -143,8 +131,9 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
 
     // ── Clear console ──
     const clearConsole = () => {
-        setLines([]);
-        // Do NOT reset lastSeenLine → old Docker logs won't re-appear
+        setDockerLogs([]);
+        setLocalLines([]);
+        setCleared(true);
     };
 
     // ── Send command ──
@@ -157,23 +146,22 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
         setIsSending(true);
         autoScroll.current = true;
 
-        // Show the typed command
-        setLines(prev => [...prev, `> ${cmd}`]);
+        // Add command to local lines (persists across polls)
+        setLocalLines(prev => [...prev, `> ${cmd}`]);
 
         try {
             const result = await serversApi.sendCommand(id, cmd);
             if (result.output?.trim()) {
                 const cleaned = result.output.trim().replace(/[\x00-\x08]/g, '');
-                setLines(prev => [...prev, cleaned]);
+                setLocalLines(prev => [...prev, cleaned]);
             }
         } catch {
-            setLines(prev => [...prev, '§c Failed to send command']);
+            setLocalLines(prev => [...prev, '§c Failed to send command']);
         } finally {
             setIsSending(false);
         }
     };
 
-    // ── Render ──
     return (
         <div className="space-y-4 animate-fade-in h-[calc(100vh-8rem)]">
             {/* Header */}
@@ -219,14 +207,14 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                     onScroll={handleScroll}
                     className="flex-1 p-4 overflow-y-auto font-mono text-sm bg-black/50"
                 >
-                    {lines.length === 0 ? (
+                    {displayLines.length === 0 ? (
                         <div className="text-muted-foreground">
                             {server?.status === 'running'
                                 ? 'Loading console output...'
                                 : 'Server is not running. Start it to see console output.'}
                         </div>
                     ) : (
-                        lines.map((line, i) => (
+                        displayLines.map((line, i) => (
                             <div key={i} className={`leading-relaxed whitespace-pre-wrap break-all ${colorFor(line)}`}>
                                 {line}
                             </div>
