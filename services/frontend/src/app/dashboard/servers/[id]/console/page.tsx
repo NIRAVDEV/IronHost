@@ -4,137 +4,150 @@ import Link from 'next/link';
 import { useState, useEffect, useRef, use, useCallback } from 'react';
 import { serversApi, Server } from '@/lib/api';
 
-// Filter out noisy Docker/Java/init logs that customers don't care about
+// ── Noise filter: hide logs a customer doesn't care about ──
 const NOISE_PATTERNS = [
-    /^\[init\]/,                          // Docker init messages
-    /^Unpacking /,                        // Library extraction
-    /^WARNING: A restricted method/,      // Java access warnings
-    /^WARNING: java\.lang/,               // Java system warnings
-    /^WARNING: sun\.misc/,                // Unsafe deprecation warnings
-    /^WARNING: Use --enable-native/,      // JVM flags advice
-    /^WARNING: Restricted methods/,       // Future release warnings
-    /^WARNING: Please consider/,          // Maintainer notices
-    /^WARNING: A terminally deprecated/,  // Deprecation warnings
-    /\[mc-image-helper\]/,                // MC image helper noise
-    /^Starting net\.minecraft\.server/,   // Raw startup line (covered by [Server thread])
+    /\[init\]/,                              // Docker init messages
+    /Unpacking /,                            // Library extraction
+    /^WARNING:/,                             // Java warnings
+    /\[mc-image-helper\]/,                   // MC image helper
+    /^Starting net\.minecraft\.server/,      // Raw startup (covered by [Server thread])
+    /Thread RCON Client/,                    // RCON internal connect/disconnect
+    /Thread RCON Listener/,                  // RCON listener threads
+    /RCON running on/,                       // RCON bind message
+    /RCON Client .* shutting down/,          // RCON disconnect
+    /mc-server-runner/,                      // Server runner internal messages
+    /Stopping with rcon-cli/,               // Internal stop mechanism
 ];
 
-function isNoisyLog(line: string): boolean {
-    // Strip timestamp prefix if present (e.g., "2026-02-10T13:49:39.670Z ")
-    const stripped = line.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s*/, '');
-    // Also strip Docker Desktop style timestamps
-    const stripped2 = stripped.replace(/^\d{4}-\d{2}-\d{2}\s[\d:.]+\s\|\s*/, '');
-
-    for (const pattern of NOISE_PATTERNS) {
-        if (pattern.test(stripped) || pattern.test(stripped2)) {
-            return true;
-        }
+function shouldShowLog(rawLine: string): boolean {
+    // Strip timestamps
+    const line = rawLine
+        .replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s*/, '')
+        .replace(/^\d{4}-\d{2}-\d{2}\s[\d:.]+\s\|\s*/, '');
+    if (line.trim().length === 0) return false;
+    for (const p of NOISE_PATTERNS) {
+        if (p.test(line)) return false;
     }
-    // Filter empty/whitespace-only lines
-    if (stripped.trim().length === 0) return true;
-    return false;
+    return true;
 }
 
-// Clean Docker multiplexed output header bytes
-function cleanLog(line: string): string {
-    return line.replace(/[\x00-\x08]/g, '');
+function cleanLine(raw: string): string {
+    // Remove Docker header bytes + timestamps
+    return raw
+        .replace(/[\x00-\x08]/g, '')
+        .replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s*/, '')
+        .replace(/^\d{4}-\d{2}-\d{2}\s[\d:.]+\s\|\s*/, '');
 }
+
+function colorFor(line: string): string {
+    if (line.startsWith('>')) return 'text-cyan-400';
+    if (line.includes('[WARN]') || line.includes('WARN')) return 'text-yellow-400';
+    if (line.includes('[ERROR]') || line.includes('ERROR')) return 'text-red-400';
+    if (line.includes('joined the game') || line.includes('logged in')) return 'text-green-400';
+    if (line.includes('left the game') || line.includes('lost connection')) return 'text-yellow-300';
+    if (line.includes('Done (')) return 'text-green-400';
+    if (line.includes('Starting minecraft server')) return 'text-blue-400';
+    if (line.includes('Stopping server') || line.includes('Saving')) return 'text-orange-400';
+    // Plain rcon response lines (no brackets, not a command)
+    if (!line.startsWith('[') && !line.startsWith('>') && line.length > 0) return 'text-purple-400';
+    return 'text-gray-300';
+}
+
+// ────────────────────────────────────────────────────
 
 export default function ConsolePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const [server, setServer] = useState<Server | null>(null);
-    const [logs, setLogs] = useState<string[]>([]);
+    const [lines, setLines] = useState<string[]>([]);          // The single display array
     const [command, setCommand] = useState('');
     const [isSending, setIsSending] = useState(false);
     const terminalRef = useRef<HTMLDivElement>(null);
-    const lastDockerLineCount = useRef(0);
-    const prevServerStatus = useRef<string | null>(null);
-    const shouldAutoScroll = useRef(true);
+    const autoScroll = useRef(true);
 
-    // Fetch server info  
+    // Diff tracking: last raw Docker line we processed
+    const lastSeenLine = useRef<string>('');
+    // Track whether first fetch has happened
+    const firstFetch = useRef(true);
+
+    // ── Server info polling ──
     useEffect(() => {
-        async function fetchServer() {
-            try {
-                const data = await serversApi.get(id);
-                setServer(data);
-            } catch (err) {
-                console.error('Failed to fetch server:', err);
-            }
-        }
-        fetchServer();
-        const interval = setInterval(fetchServer, 5000);
-        return () => clearInterval(interval);
+        const load = async () => {
+            try { setServer(await serversApi.get(id)); } catch { /* */ }
+        };
+        load();
+        const i = setInterval(load, 5000);
+        return () => clearInterval(i);
     }, [id]);
 
-    // Detect server restart → clear console
-    useEffect(() => {
-        if (server?.status && prevServerStatus.current !== null) {
-            // If server just started (was not running before), clear the console
-            if (server.status === 'running' && prevServerStatus.current !== 'running') {
-                setLogs([]);
-                lastDockerLineCount.current = 0;
-            }
-        }
-        prevServerStatus.current = server?.status || null;
-    }, [server?.status]);
-
-    // Poll for logs - APPEND new lines instead of replacing (preserves local command/rcon lines)
+    // ── Log polling: append-only with diff detection ──
     const fetchLogs = useCallback(async () => {
         try {
-            const dockerLines = await serversApi.getLogs(id);
-            if (!dockerLines || dockerLines.length === 0) return;
+            const raw = await serversApi.getLogs(id);
+            if (!raw || raw.length === 0) return;
 
-            if (dockerLines.length < lastDockerLineCount.current) {
-                // Docker log count went DOWN = server restarted, clear and start fresh
-                setLogs([]);
-                lastDockerLineCount.current = 0;
+            let newRaw: string[];
+
+            if (firstFetch.current || !lastSeenLine.current) {
+                // First fetch → all lines are new
+                newRaw = raw;
+                firstFetch.current = false;
+            } else {
+                // Find our "bookmark" in the new batch
+                const idx = raw.lastIndexOf(lastSeenLine.current);
+                if (idx >= 0) {
+                    newRaw = raw.slice(idx + 1); // only lines AFTER the bookmark
+                } else {
+                    // Bookmark not found → server restarted, reset display
+                    setLines([]);
+                    newRaw = raw;
+                }
             }
 
-            if (dockerLines.length > lastDockerLineCount.current) {
-                // Only grab truly new Docker log lines
-                const newLines = dockerLines.slice(lastDockerLineCount.current);
-                lastDockerLineCount.current = dockerLines.length;
+            if (newRaw.length > 0) {
+                // Update bookmark to the very last raw line
+                lastSeenLine.current = raw[raw.length - 1];
 
-                // Filter out noisy lines
-                const filtered = newLines
-                    .map(cleanLog)
-                    .filter(line => !isNoisyLog(line));
+                // Clean + filter
+                const cleaned = newRaw
+                    .filter(shouldShowLog)
+                    .map(cleanLine)
+                    .filter(l => l.trim().length > 0);
 
-                if (filtered.length > 0) {
-                    setLogs(prev => [...prev, ...filtered]);
+                if (cleaned.length > 0) {
+                    setLines(prev => [...prev, ...cleaned]);
                 }
             }
         } catch {
-            // Silently fail - server might not be running
+            // server might not be running
         }
     }, [id]);
 
     useEffect(() => {
         fetchLogs();
-        const interval = setInterval(fetchLogs, 3000);
-        return () => clearInterval(interval);
+        const i = setInterval(fetchLogs, 3000);
+        return () => clearInterval(i);
     }, [fetchLogs]);
 
-    // Auto scroll to bottom when new logs arrive (only if user hasn't scrolled up)
+    // ── Auto-scroll ──
     useEffect(() => {
-        if (shouldAutoScroll.current && terminalRef.current) {
+        if (autoScroll.current && terminalRef.current) {
             terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
         }
-    }, [logs]);
+    }, [lines]);
 
-    // Track if user has scrolled up
     const handleScroll = () => {
         if (!terminalRef.current) return;
         const { scrollTop, scrollHeight, clientHeight } = terminalRef.current;
-        shouldAutoScroll.current = scrollHeight - scrollTop - clientHeight < 50;
+        autoScroll.current = scrollHeight - scrollTop - clientHeight < 50;
     };
 
-    // Clear console
+    // ── Clear console ──
     const clearConsole = () => {
-        setLogs([]);
-        lastDockerLineCount.current = 0;
+        setLines([]);
+        // Do NOT reset lastSeenLine → old Docker logs won't re-appear
     };
 
+    // ── Send command ──
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!command.trim() || isSending) return;
@@ -142,50 +155,25 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
         const cmd = command;
         setCommand('');
         setIsSending(true);
-        shouldAutoScroll.current = true;
+        autoScroll.current = true;
 
-        // Add the command to logs
-        const time = new Date().toLocaleTimeString('en-US', { hour12: false });
-        setLogs(prev => [...prev, `> ${cmd}`]);
+        // Show the typed command
+        setLines(prev => [...prev, `> ${cmd}`]);
 
         try {
             const result = await serversApi.sendCommand(id, cmd);
-            // Show the rcon response if available
-            if (result.output && result.output.trim()) {
+            if (result.output?.trim()) {
                 const cleaned = result.output.trim().replace(/[\x00-\x08]/g, '');
-                setLogs(prev => [...prev, cleaned]);
+                setLines(prev => [...prev, cleaned]);
             }
-        } catch (err) {
-            setLogs(prev => [...prev, `§c Error: Failed to send command`]);
+        } catch {
+            setLines(prev => [...prev, '§c Failed to send command']);
         } finally {
             setIsSending(false);
         }
     };
 
-    // Color logic for log lines
-    const getLogColor = (line: string): string => {
-        if (line.startsWith('>')) return 'text-cyan-400';          // User commands
-        if (line.includes('[WARN]') || line.includes('WARN')) return 'text-yellow-400';
-        if (line.includes('[ERROR]') || line.includes('§c')) return 'text-red-400';
-        if (line.includes('joined the game') || line.includes('logged in')) return 'text-green-400';
-        if (line.includes('left the game') || line.includes('lost connection')) return 'text-yellow-300';
-        if (line.includes('Done (')) return 'text-green-400';
-        if (line.includes('RCON')) return 'text-gray-500';         // RCON internal messages are dim
-        if (line.includes('Starting minecraft server')) return 'text-blue-400';
-        // Rcon command responses (lines that appear right after ">")
-        if (!line.match(/^\[?\d/) && !line.startsWith('>') && !line.includes('[')) return 'text-purple-400';
-        return 'text-gray-300';
-    };
-
-    // Format log line for display - strip verbose timestamps, keep just the useful info
-    const formatLog = (line: string): string => {
-        // Strip ISO timestamps: "2026-02-10T13:54:45.245Z "
-        let formatted = line.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s*/, '');
-        // Strip Docker Desktop timestamps: "2026-02-10 19:24:45.245 | "
-        formatted = formatted.replace(/^\d{4}-\d{2}-\d{2}\s[\d:.]+\s\|\s*/, '');
-        return formatted;
-    };
-
+    // ── Render ──
     return (
         <div className="space-y-4 animate-fade-in h-[calc(100vh-8rem)]">
             {/* Header */}
@@ -205,7 +193,6 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
-                    {/* Clear Console Button */}
                     <button
                         onClick={clearConsole}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
@@ -227,30 +214,23 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
 
             {/* Terminal */}
             <div className="flex flex-col h-[calc(100%-4rem)] glass-card rounded-xl overflow-hidden">
-                {/* Terminal output */}
                 <div
                     ref={terminalRef}
                     onScroll={handleScroll}
                     className="flex-1 p-4 overflow-y-auto font-mono text-sm bg-black/50"
                 >
-                    {logs.length === 0 ? (
+                    {lines.length === 0 ? (
                         <div className="text-muted-foreground">
                             {server?.status === 'running'
                                 ? 'Loading console output...'
                                 : 'Server is not running. Start it to see console output.'}
                         </div>
                     ) : (
-                        logs.map((log, i) => {
-                            const formatted = formatLog(log);
-                            return (
-                                <div
-                                    key={i}
-                                    className={`leading-relaxed whitespace-pre-wrap break-all ${getLogColor(formatted)}`}
-                                >
-                                    {formatted}
-                                </div>
-                            );
-                        })
+                        lines.map((line, i) => (
+                            <div key={i} className={`leading-relaxed whitespace-pre-wrap break-all ${colorFor(line)}`}>
+                                {line}
+                            </div>
+                        ))
                     )}
                 </div>
 
@@ -261,7 +241,7 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                         <input
                             type="text"
                             value={command}
-                            onChange={(e) => setCommand(e.target.value)}
+                            onChange={e => setCommand(e.target.value)}
                             placeholder={server?.status === 'running' ? 'Enter command...' : 'Server is not running'}
                             disabled={server?.status !== 'running' || isSending}
                             className="flex-1 bg-transparent text-foreground font-mono text-sm placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
