@@ -13,6 +13,7 @@ type User struct {
 	Email        string    `json:"email"`
 	PasswordHash string    `json:"-"`
 	Username     string    `json:"username"`
+	IsAdmin      bool      `json:"is_admin"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -44,9 +45,9 @@ func (db *DB) CreateUser(ctx context.Context, email, passwordHash, username stri
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	var user User
 	err := db.Pool.QueryRow(ctx, `
-		SELECT id, email, password_hash, username, created_at, updated_at
+		SELECT id, email, password_hash, username, COALESCE(is_admin, false), created_at, updated_at
 		FROM users WHERE email = $1
-	`, email).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Username, &user.CreatedAt, &user.UpdatedAt)
+	`, email).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Username, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		return nil, err
@@ -59,9 +60,9 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 func (db *DB) GetUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	var user User
 	err := db.Pool.QueryRow(ctx, `
-		SELECT id, email, password_hash, username, created_at, updated_at
+		SELECT id, email, password_hash, username, COALESCE(is_admin, false), created_at, updated_at
 		FROM users WHERE id = $1
-	`, id).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Username, &user.CreatedAt, &user.UpdatedAt)
+	`, id).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Username, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		return nil, err

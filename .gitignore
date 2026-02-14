@@ -54,3 +54,7 @@ pids/
 
 # Local data
 data/
+
+
+# Testing
+demo/

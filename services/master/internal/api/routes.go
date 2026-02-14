@@ -31,9 +31,9 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 	billingHandler := NewBillingHandler(db)
 	billing.Get("/plans", billingHandler.ListPlans)
 
-	// Protected routes (require JWT) - DISABLED FOR TESTING
+	// Protected routes (require valid Supabase JWT)
 	protected := v1.Group("")
-	// protected.Use(JWTMiddleware())
+	protected.Use(JWTMiddleware())
 
 	// Auth - me endpoint
 	protected.Get("/auth/me", authHandler.Me)
@@ -43,8 +43,9 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 	protected.Post("/billing/subscribe", billingHandler.Subscribe)
 	protected.Get("/billing/invoices", billingHandler.ListInvoices)
 
-	// Node management
+	// Node management (admin only)
 	nodes := protected.Group("/nodes")
+	nodes.Use(AdminMiddleware(db))
 	nodeHandler := NewNodeHandler(db, grpcPool)
 	nodes.Get("/", nodeHandler.List)
 	nodes.Get("/:id", nodeHandler.Get)
@@ -70,8 +71,9 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 	servers.Get("/:id/logs", serverHandler.GetLogs)
 	servers.Get("/:id/console", serverHandler.StreamConsole) // WebSocket upgrade
 
-	// Allocations
+	// Allocations (admin only)
 	allocations := protected.Group("/allocations")
+	allocations.Use(AdminMiddleware(db))
 	allocationHandler := NewAllocationHandler(db)
 	allocations.Get("/", allocationHandler.List)
 	allocations.Post("/", allocationHandler.Create)

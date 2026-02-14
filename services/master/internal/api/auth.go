@@ -52,6 +52,7 @@ type UserResponse struct {
 	ID        uuid.UUID `json:"id"`
 	Email     string    `json:"email"`
 	Username  string    `json:"username"`
+	IsAdmin   bool      `json:"is_admin"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -107,6 +108,7 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 			ID:        user.ID,
 			Email:     user.Email,
 			Username:  user.Username,
+			IsAdmin:   user.IsAdmin,
 			CreatedAt: user.CreatedAt,
 		},
 	})
@@ -146,6 +148,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 			ID:        user.ID,
 			Email:     user.Email,
 			Username:  user.Username,
+			IsAdmin:   user.IsAdmin,
 			CreatedAt: user.CreatedAt,
 		},
 	})
@@ -164,6 +167,7 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 		ID:        user.ID,
 		Email:     user.Email,
 		Username:  user.Username,
+		IsAdmin:   user.IsAdmin,
 		CreatedAt: user.CreatedAt,
 	})
 }
@@ -226,6 +230,27 @@ func JWTMiddleware() fiber.Handler {
 
 		// Store user ID in context
 		c.Locals("userID", userID)
+
+		return c.Next()
+	}
+}
+
+// AdminMiddleware protects admin-only routes (requires JWTMiddleware to run first)
+func AdminMiddleware(db *database.DB) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userID, ok := c.Locals("userID").(uuid.UUID)
+		if !ok {
+			return fiber.NewError(fiber.StatusUnauthorized, "authentication required")
+		}
+
+		user, err := db.GetUserByID(c.Context(), userID)
+		if err != nil || user == nil {
+			return fiber.NewError(fiber.StatusUnauthorized, "user not found")
+		}
+
+		if !user.IsAdmin {
+			return fiber.NewError(fiber.StatusForbidden, "admin access required")
+		}
 
 		return c.Next()
 	}
