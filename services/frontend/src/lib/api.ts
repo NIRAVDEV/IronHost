@@ -143,7 +143,7 @@ export const serversApi = {
     },
 
     sendCommand: async (id: string, command: string) => {
-        const { data } = await api.post(`/servers/${id}/command`, { command });
+        const { data } = await api.post<{ message: string; output: string }>(`/servers/${id}/command`, { command });
         return data;
     },
 

@@ -8,6 +8,7 @@ package v1
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -51,7 +52,7 @@ type AgentServiceClient interface {
 	ListServers(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListServersResponse, error)
 	// Console interaction
 	StreamConsole(ctx context.Context, in *ServerIdentifier, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ConsoleOutput], error)
-	SendCommand(ctx context.Context, in *SendCommandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SendCommand(ctx context.Context, in *SendCommandRequest, opts ...grpc.CallOption) (*ServerActionResponse, error)
 	// Node health
 	GetNodeStats(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*NodeStats, error)
 	Ping(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*PingResponse, error)
@@ -154,9 +155,9 @@ func (c *agentServiceClient) StreamConsole(ctx context.Context, in *ServerIdenti
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_StreamConsoleClient = grpc.ServerStreamingClient[ConsoleOutput]
 
-func (c *agentServiceClient) SendCommand(ctx context.Context, in *SendCommandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *agentServiceClient) SendCommand(ctx context.Context, in *SendCommandRequest, opts ...grpc.CallOption) (*ServerActionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(ServerActionResponse)
 	err := c.cc.Invoke(ctx, AgentService_SendCommand_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -202,7 +203,7 @@ type AgentServiceServer interface {
 	ListServers(context.Context, *emptypb.Empty) (*ListServersResponse, error)
 	// Console interaction
 	StreamConsole(*ServerIdentifier, grpc.ServerStreamingServer[ConsoleOutput]) error
-	SendCommand(context.Context, *SendCommandRequest) (*emptypb.Empty, error)
+	SendCommand(context.Context, *SendCommandRequest) (*ServerActionResponse, error)
 	// Node health
 	GetNodeStats(context.Context, *emptypb.Empty) (*NodeStats, error)
 	Ping(context.Context, *emptypb.Empty) (*PingResponse, error)
@@ -240,7 +241,7 @@ func (UnimplementedAgentServiceServer) ListServers(context.Context, *emptypb.Emp
 func (UnimplementedAgentServiceServer) StreamConsole(*ServerIdentifier, grpc.ServerStreamingServer[ConsoleOutput]) error {
 	return status.Error(codes.Unimplemented, "method StreamConsole not implemented")
 }
-func (UnimplementedAgentServiceServer) SendCommand(context.Context, *SendCommandRequest) (*emptypb.Empty, error) {
+func (UnimplementedAgentServiceServer) SendCommand(context.Context, *SendCommandRequest) (*ServerActionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendCommand not implemented")
 }
 func (UnimplementedAgentServiceServer) GetNodeStats(context.Context, *emptypb.Empty) (*NodeStats, error) {

@@ -263,8 +263,8 @@ func (m *Manager) StreamLogs(ctx context.Context, containerID string, stdout, st
 	return err
 }
 
-// SendCommand sends a command to the container's stdin (e.g., Minecraft console command)
-func (m *Manager) SendCommand(ctx context.Context, containerID string, command string) error {
+// SendCommand sends a command to the container via rcon-cli and returns the output
+func (m *Manager) SendCommand(ctx context.Context, containerID string, command string) (string, error) {
 	execConfig := types.ExecConfig{
 		Cmd:          []string{"rcon-cli", command},
 		AttachStdout: true,
@@ -273,15 +273,25 @@ func (m *Manager) SendCommand(ctx context.Context, containerID string, command s
 
 	execID, err := m.client.ContainerExecCreate(ctx, containerID, execConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create exec: %w", err)
+		return "", fmt.Errorf("failed to create exec: %w", err)
 	}
 
-	err = m.client.ContainerExecStart(ctx, execID.ID, types.ExecStartCheck{})
+	// Attach to capture output
+	resp, err := m.client.ContainerExecAttach(ctx, execID.ID, types.ExecStartCheck{})
 	if err != nil {
-		return fmt.Errorf("failed to start exec: %w", err)
+		return "", fmt.Errorf("failed to attach to exec: %w", err)
+	}
+	defer resp.Close()
+
+	// Read all output
+	output, err := io.ReadAll(resp.Reader)
+	if err != nil {
+		return "", fmt.Errorf("failed to read exec output: %w", err)
 	}
 
-	return nil
+	// Clean up Docker stream header bytes (8-byte header per frame)
+	cleaned := string(output)
+	return cleaned, nil
 }
 
 // GetContainerByServerID finds a container by IronHost server ID label

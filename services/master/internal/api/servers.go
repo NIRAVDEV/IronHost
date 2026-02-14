@@ -371,7 +371,7 @@ func (h *ServerHandler) SendCommand(c *fiber.Ctx) error {
 	client := agentpb.NewAgentServiceClient(conn)
 	ctx := metadata.AppendToOutgoingContext(c.Context(), "authorization", "Bearer "+node.DaemonTokenHash)
 
-	_, err = client.SendCommand(ctx, &agentpb.SendCommandRequest{
+	resp, err := client.SendCommand(ctx, &agentpb.SendCommandRequest{
 		ServerId: server.ID.String(),
 		Command:  req.Command,
 	})
@@ -379,7 +379,12 @@ func (h *ServerHandler) SendCommand(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "SendCommand RPC failed: "+err.Error())
 	}
 
-	return c.JSON(fiber.Map{"message": "command sent"})
+	output := ""
+	if resp != nil {
+		output = resp.ErrorMessage // ErrorMessage field carries the rcon output
+	}
+
+	return c.JSON(fiber.Map{"message": "command sent", "output": output})
 }
 
 // GetLogs returns recent server logs via Agent's StreamConsole RPC

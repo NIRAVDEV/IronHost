@@ -316,21 +316,22 @@ func (s *AgentService) StreamConsole(req *agentpb.ServerIdentifier, stream agent
 }
 
 // SendCommand sends a command to the server console
-func (s *AgentService) SendCommand(ctx context.Context, req *agentpb.SendCommandRequest) (*emptypb.Empty, error) {
+func (s *AgentService) SendCommand(ctx context.Context, req *agentpb.SendCommandRequest) (*agentpb.ServerActionResponse, error) {
 	fmt.Printf("💬 Received SendCommand for %s: %s\n", req.ServerId, req.Command)
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
 		fmt.Printf("❌ SendCommand: container not found: %v\n", err)
-		return nil, err
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
-	if err := s.dockerMgr.SendCommand(ctx, containerID, req.Command); err != nil {
+	output, err := s.dockerMgr.SendCommand(ctx, containerID, req.Command)
+	if err != nil {
 		fmt.Printf("❌ SendCommand: failed: %v\n", err)
-		return nil, err
+		return &agentpb.ServerActionResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 
-	fmt.Printf("✅ SendCommand: success\n")
-	return &emptypb.Empty{}, nil
+	fmt.Printf("✅ SendCommand: success, output: %s\n", output)
+	return &agentpb.ServerActionResponse{Success: true, ErrorMessage: output}, nil
 }
 
 // GetNodeStats returns resource stats for this node

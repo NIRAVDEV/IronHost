@@ -65,9 +65,15 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
         setLogs(prev => [...prev, `[${time}] [CONSOLE] > ${cmd}`]);
 
         try {
-            await serversApi.sendCommand(id, cmd);
-            // Fetch fresh logs after a short delay to see the response
-            setTimeout(fetchLogs, 1000);
+            const result = await serversApi.sendCommand(id, cmd);
+            // Show the rcon response if available
+            if (result.output && result.output.trim()) {
+                const cleaned = result.output.trim().replace(/[\x00-\x08]/g, '');
+                const time2 = new Date().toLocaleTimeString('en-US', { hour12: false });
+                setLogs(prev => [...prev, `[${time2}] [RCON] ${cleaned}`]);
+            }
+            // Also fetch fresh logs after a short delay
+            setTimeout(fetchLogs, 1500);
         } catch (err) {
             const time2 = new Date().toLocaleTimeString('en-US', { hour12: false });
             setLogs(prev => [...prev, `[${time2}] [ERROR] Failed to send command: ${err}`]);
@@ -129,9 +135,10 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                                 <div
                                     key={i}
                                     className={`leading-relaxed whitespace-pre-wrap break-all ${cleaned.includes('[WARN]') ? 'text-yellow-400' :
-                                            cleaned.includes('[ERROR]') ? 'text-red-400' :
-                                                cleaned.includes('joined the game') || cleaned.includes('logged in') ? 'text-green-400' :
-                                                    cleaned.includes('[CONSOLE]') ? 'text-cyan-400' :
+                                        cleaned.includes('[ERROR]') ? 'text-red-400' :
+                                            cleaned.includes('joined the game') || cleaned.includes('logged in') ? 'text-green-400' :
+                                                cleaned.includes('[CONSOLE]') ? 'text-cyan-400' :
+                                                    cleaned.includes('[RCON]') ? 'text-purple-400' :
                                                         cleaned.includes('Done (') ? 'text-green-400' :
                                                             'text-gray-300'
                                         }`}

@@ -23,7 +23,7 @@ service AgentService {
   
   // Console interaction
   rpc StreamConsole(ServerIdentifier) returns (stream ConsoleOutput);
-  rpc SendCommand(SendCommandRequest) returns (google.protobuf.Empty);
+  rpc SendCommand(SendCommandRequest) returns (ServerActionResponse);
   
   // Node health
   rpc GetNodeStats(google.protobuf.Empty) returns (NodeStats);
