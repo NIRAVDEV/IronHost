@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { nodesApi, Node } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth';
 
 function NodeCard({ node, onDelete }: { node: Node; onDelete: (id: string) => void }) {
     const isOnline = !node.maintenance_mode;
@@ -82,13 +84,22 @@ function NodeCard({ node, onDelete }: { node: Node; onDelete: (id: string) => vo
 }
 
 export default function NodesPage() {
+    const router = useRouter();
+    const { isAdmin, isLoading: authLoading } = useAuthStore();
     const [nodes, setNodes] = useState<Node[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Redirect non-admin users
     useEffect(() => {
-        fetchNodes();
-    }, []);
+        if (!authLoading && !isAdmin) {
+            router.replace('/dashboard');
+        }
+    }, [authLoading, isAdmin, router]);
+
+    useEffect(() => {
+        if (isAdmin) fetchNodes();
+    }, [isAdmin]);
 
     async function fetchNodes() {
         try {

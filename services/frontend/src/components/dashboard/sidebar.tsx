@@ -58,7 +58,7 @@ const icons = {
 const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: icons.home },
     { href: '/dashboard/servers', label: 'Servers', icon: icons.server },
-    { href: '/dashboard/nodes', label: 'Nodes', icon: icons.nodes },
+    { href: '/dashboard/nodes', label: 'Nodes', icon: icons.nodes, adminOnly: true },
     { href: '/dashboard/billing', label: 'Billing', icon: icons.creditCard },
     { href: '/dashboard/settings', label: 'Settings', icon: icons.settings },
 ];
@@ -66,7 +66,7 @@ const navItems = [
 export function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
-    const { user, fetchUser, logout } = useAuthStore();
+    const { user, fetchUser, logout, isAdmin } = useAuthStore();
 
     useEffect(() => {
         fetchUser();
@@ -81,6 +81,9 @@ export function Sidebar() {
         router.push('/login');
     };
 
+    // Filter nav items based on admin status
+    const visibleNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
+
     return (
         <aside className="fixed left-0 top-0 z-40 h-screen w-64 glass-card border-r border-border/50">
             <div className="flex h-full flex-col">
@@ -94,7 +97,7 @@ export function Sidebar() {
 
                 {/* Navigation */}
                 <nav className="flex-1 space-y-1 px-3 py-4">
-                    {navItems.map((item) => {
+                    {visibleNavItems.map((item) => {
                         const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
                         return (
                             <Link

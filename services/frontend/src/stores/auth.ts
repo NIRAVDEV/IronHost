@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface AuthState {
     user: SupabaseUser | null;
     isLoading: boolean;
     isAuthenticated: boolean;
+    isAdmin: boolean;
 
     // Actions
     login: (email: string, password: string) => Promise<void>;
@@ -20,6 +22,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
     user: null,
     isLoading: false,
     isAuthenticated: false,
+    isAdmin: false,
 
     login: async (email: string, password: string) => {
         set({ isLoading: true });
@@ -32,9 +35,17 @@ export const useAuthStore = create<AuthState>()((set) => ({
 
             if (error) throw error;
 
+            // Fetch admin status from our backend
+            let isAdmin = false;
+            try {
+                const res = await api.get('/auth/me');
+                isAdmin = res.data?.is_admin === true;
+            } catch { /* not critical */ }
+
             set({
                 user: data.user,
                 isAuthenticated: true,
+                isAdmin,
                 isLoading: false,
             });
         } catch (error) {
@@ -82,6 +93,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
             set({
                 user: data.user,
                 isAuthenticated: !!data.user,
+                isAdmin: false, // New users are never admin
                 isLoading: false,
             });
         } catch (error) {
@@ -95,7 +107,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
             const supabase = createClient();
             await supabase.auth.signOut();
         } finally {
-            set({ user: null, isAuthenticated: false });
+            set({ user: null, isAuthenticated: false, isAdmin: false });
         }
     },
 
@@ -105,13 +117,25 @@ export const useAuthStore = create<AuthState>()((set) => ({
             const supabase = createClient();
             const { data: { user } } = await supabase.auth.getUser();
 
-            set({
-                user,
-                isAuthenticated: !!user,
-                isLoading: false,
-            });
+            if (user) {
+                // Fetch admin status from our backend
+                let isAdmin = false;
+                try {
+                    const res = await api.get('/auth/me');
+                    isAdmin = res.data?.is_admin === true;
+                } catch { /* not critical */ }
+
+                set({
+                    user,
+                    isAuthenticated: true,
+                    isAdmin,
+                    isLoading: false,
+                });
+            } else {
+                set({ user: null, isAuthenticated: false, isAdmin: false, isLoading: false });
+            }
         } catch {
-            set({ user: null, isAuthenticated: false, isLoading: false });
+            set({ user: null, isAuthenticated: false, isAdmin: false, isLoading: false });
         }
     },
 

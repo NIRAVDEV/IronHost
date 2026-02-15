@@ -1,14 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { nodesApi } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth';
 
 export default function AddNodePage() {
     const router = useRouter();
+    const { isAdmin, isLoading: authLoading } = useAuthStore();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Redirect non-admin users
+    useEffect(() => {
+        if (!authLoading && !isAdmin) {
+            router.replace('/dashboard');
+        }
+    }, [authLoading, isAdmin, router]);
 
     // Form state
     const [name, setName] = useState('');
