@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/MicahParks/keyfunc/v3"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -13,16 +14,47 @@ import (
 	"github.com/ironhost/master/internal/database"
 )
 
-// JWT secret - reads from SUPABASE_JWT_SECRET env var (found in Supabase Dashboard > Settings > API > JWT Secret)
-// Falls back to legacy secret for backward compatibility
-var jwtSecret = func() []byte {
+// jwtKeyfunc is the key function used to verify JWT tokens.
+// It is initialized based on the environment:
+//   - If SUPABASE_URL is set, fetches JWKS from Supabase for ES256 verification
+//   - Otherwise, falls back to HMAC secret from SUPABASE_JWT_SECRET
+var jwtKeyfunc jwt.Keyfunc
+
+// jwtSecret is only used for HMAC fallback and for signing our own tokens (register/login)
+var jwtSecret []byte
+
+func init() {
+	// Load HMAC secret (used for our own token generation + HMAC fallback)
 	if secret := os.Getenv("SUPABASE_JWT_SECRET"); secret != "" {
-		log.Println("Using SUPABASE_JWT_SECRET for JWT validation")
-		return []byte(secret)
+		jwtSecret = []byte(secret)
+	} else {
+		jwtSecret = []byte("ironhost-secret-key-change-in-production")
 	}
-	log.Println("WARNING: Using fallback JWT secret. Set SUPABASE_JWT_SECRET for production.")
-	return []byte("ironhost-secret-key-change-in-production")
-}()
+
+	// Try to load JWKS from Supabase for ES256 token verification
+	supabaseURL := os.Getenv("SUPABASE_URL")
+	if supabaseURL != "" {
+		jwksURL := supabaseURL + "/auth/v1/.well-known/jwks.json"
+		log.Printf("Loading JWKS from: %s", jwksURL)
+
+		k, err := keyfunc.NewDefault([]string{jwksURL})
+		if err != nil {
+			log.Printf("WARNING: Failed to load JWKS from %s: %v", jwksURL, err)
+			log.Println("Falling back to HMAC JWT secret for verification")
+			jwtKeyfunc = func(t *jwt.Token) (interface{}, error) {
+				return jwtSecret, nil
+			}
+		} else {
+			log.Println("JWKS loaded successfully — ES256 tokens will be verified")
+			jwtKeyfunc = k.Keyfunc
+		}
+	} else {
+		log.Println("SUPABASE_URL not set — using HMAC JWT secret for verification")
+		jwtKeyfunc = func(t *jwt.Token) (interface{}, error) {
+			return jwtSecret, nil
+		}
+	}
+}
 
 // AuthHandler handles authentication requests
 type AuthHandler struct {
@@ -200,13 +232,8 @@ func JWTMiddleware() fiber.Handler {
 			return fiber.NewError(fiber.StatusUnauthorized, "invalid authorization format")
 		}
 
-		// Parse and validate token
-		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-			log.Printf("JWT: incoming token alg=%v", t.Header["alg"])
-			// Supabase tokens are signed with HS256 using the JWT secret
-			// Accept any method but always return the HMAC secret
-			return jwtSecret, nil
-		})
+		// Parse and validate token using JWKS keyfunc (supports ES256 + HS256)
+		token, err := jwt.Parse(tokenString, jwtKeyfunc)
 
 		if err != nil {
 			log.Printf("JWT validation failed: %v", err)
