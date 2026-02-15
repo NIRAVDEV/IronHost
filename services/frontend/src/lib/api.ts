@@ -29,16 +29,15 @@ api.interceptors.request.use(async (config) => {
     return config;
 });
 
-// Response interceptor - handle 401 (but skip for /auth/me to avoid redirect loops)
+// Response interceptor - handle 401
 api.interceptors.response.use(
     (response) => response,
     (error) => {
+        // Log 401 errors but DO NOT redirect automatically. 
+        // Automatic redirects cause infinite loops if the backend rejects a token 
+        // that the frontend Supabase SDK considers valid (e.g. secret mismatch).
         if (error.response?.status === 401) {
-            const url = error.config?.url || '';
-            // Don't redirect for /auth/me — fetchUser handles this gracefully
-            if (typeof window !== 'undefined' && !url.includes('/auth/me')) {
-                window.location.href = '/login';
-            }
+            console.warn('API Unauthorized (401):', error.config?.url);
         }
         return Promise.reject(error);
     }
