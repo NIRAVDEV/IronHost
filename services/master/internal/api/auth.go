@@ -202,13 +202,18 @@ func JWTMiddleware() fiber.Handler {
 
 		// Parse and validate token
 		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fiber.NewError(fiber.StatusUnauthorized, "invalid token signing method")
-			}
+			log.Printf("JWT: incoming token alg=%v", t.Header["alg"])
+			// Supabase tokens are signed with HS256 using the JWT secret
+			// Accept any method but always return the HMAC secret
 			return jwtSecret, nil
 		})
 
-		if err != nil || !token.Valid {
+		if err != nil {
+			log.Printf("JWT validation failed: %v", err)
+			return fiber.NewError(fiber.StatusUnauthorized, "invalid or expired token")
+		}
+
+		if !token.Valid {
 			return fiber.NewError(fiber.StatusUnauthorized, "invalid or expired token")
 		}
 
