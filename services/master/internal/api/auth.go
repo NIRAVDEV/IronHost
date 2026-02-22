@@ -237,6 +237,58 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 	})
 }
 
+// UpdateProfileRequest represents update profile payload
+type UpdateProfileRequest struct {
+	Username string `json:"username"`
+}
+
+// UpdateProfile updates the authenticated user's profile
+func (h *AuthHandler) UpdateProfile(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(uuid.UUID)
+
+	var req UpdateProfileRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
+	}
+
+	if req.Username == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "username is required")
+	}
+
+	if len(req.Username) < 3 || len(req.Username) > 32 {
+		return fiber.NewError(fiber.StatusBadRequest, "username must be between 3 and 32 characters")
+	}
+
+	if err := h.db.UpdateUsername(c.Context(), userID, req.Username); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to update profile")
+	}
+
+	// Return updated user
+	user, err := h.db.GetUserByID(c.Context(), userID)
+	if err != nil || user == nil {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+
+	usage, _ := h.db.GetResourceUsage(c.Context(), userID)
+
+	return c.JSON(UserResponse{
+		ID:                  user.ID,
+		Email:               user.Email,
+		Username:            user.Username,
+		IsAdmin:             user.IsAdmin,
+		CoinBalanceGranted:  user.CoinBalanceGranted,
+		CoinBalanceEarned:   user.CoinBalanceEarned,
+		Plan:                user.Plan,
+		ResourceRAM:         user.ResourceRAM,
+		ResourceCPU:         user.ResourceCPU,
+		ResourceStorage:     user.ResourceStorage,
+		ResourceRAMUsed:     usage.RAMUsed,
+		ResourceCPUUsed:     usage.CPUUsed,
+		ResourceStorageUsed: usage.StorageUsed,
+		CreatedAt:           user.CreatedAt,
+	})
+}
+
 // generateToken creates a JWT token for the user
 func generateToken(userID uuid.UUID) (string, error) {
 	claims := jwt.MapClaims{

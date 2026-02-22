@@ -287,3 +287,12 @@ func (db *DB) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	_, err := db.Pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
 	return err
 }
+
+// UpdateUsername updates a user's username
+func (db *DB) UpdateUsername(ctx context.Context, userID uuid.UUID, username string) error {
+	_, err := db.Pool.Exec(ctx,
+		`UPDATE users SET username = $2, updated_at = $3 WHERE id = $1`,
+		userID, username, time.Now(),
+	)
+	return err
+}

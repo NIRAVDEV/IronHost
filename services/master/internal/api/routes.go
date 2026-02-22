@@ -37,6 +37,7 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 
 	// Auth - me endpoint
 	protected.Get("/auth/me", authHandler.Me)
+	protected.Put("/auth/me", authHandler.UpdateProfile)
 
 	// Billing - protected endpoints
 	protected.Get("/billing/subscription", billingHandler.GetSubscription)
