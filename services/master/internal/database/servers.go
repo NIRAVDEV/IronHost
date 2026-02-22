@@ -149,7 +149,7 @@ func (db *DB) AssignAllocation(ctx context.Context, serverID uuid.UUID, nodeID u
 	return allocation, nil
 }
 
-// ListServers returns all servers
+// ListServers returns all servers (admin only)
 func (db *DB) ListServers(ctx context.Context) ([]*models.Server, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT s.id, s.name, s.status, s.docker_image, s.memory_limit, s.created_at, n.name as node_name
@@ -169,7 +169,33 @@ func (db *DB) ListServers(ctx context.Context) ([]*models.Server, error) {
 		if err := rows.Scan(&s.ID, &s.Name, &s.Status, &s.DockerImage, &s.MemoryLimit, &s.CreatedAt, &nodeName); err != nil {
 			return nil, err
 		}
-		// Attach partial node info
+		s.Node = &models.Node{Name: nodeName}
+		servers = append(servers, &s)
+	}
+	return servers, nil
+}
+
+// ListServersByUserID returns only servers owned by the given user
+func (db *DB) ListServersByUserID(ctx context.Context, userID uuid.UUID) ([]*models.Server, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT s.id, s.name, s.status, s.docker_image, s.memory_limit, s.created_at, n.name as node_name
+		FROM servers s
+		JOIN nodes n ON s.node_id = n.id
+		WHERE s.user_id = $1
+		ORDER BY s.created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var servers []*models.Server
+	for rows.Next() {
+		var s models.Server
+		var nodeName string
+		if err := rows.Scan(&s.ID, &s.Name, &s.Status, &s.DockerImage, &s.MemoryLimit, &s.CreatedAt, &nodeName); err != nil {
+			return nil, err
+		}
 		s.Node = &models.Node{Name: nodeName}
 		servers = append(servers, &s)
 	}

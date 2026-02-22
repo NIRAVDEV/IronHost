@@ -28,9 +28,29 @@ func NewServerHandler(db *database.DB, grpcPool *mastergrpc.ClientPool) *ServerH
 	return &ServerHandler{db: db, grpcPool: grpcPool}
 }
 
-// List returns all servers
+// getServerForUser fetches a server and verifies ownership. Returns 404 if
+// the server doesn't exist or doesn't belong to this user.
+func (h *ServerHandler) getServerForUser(c *fiber.Ctx) (*models.Server, error) {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return nil, fiber.NewError(fiber.StatusBadRequest, "invalid server ID")
+	}
+
+	userID := c.Locals("userID").(uuid.UUID)
+
+	server, err := h.db.GetServer(c.Context(), id)
+	if err != nil || server.UserID != userID {
+		return nil, fiber.NewError(fiber.StatusNotFound, "server not found")
+	}
+
+	return server, nil
+}
+
+// List returns servers belonging to the authenticated user
 func (h *ServerHandler) List(c *fiber.Ctx) error {
-	servers, err := h.db.ListServers(c.Context())
+	userID := c.Locals("userID").(uuid.UUID)
+
+	servers, err := h.db.ListServersByUserID(c.Context(), userID)
 	if err != nil {
 		log.Printf("Failed to list servers: %v", err)
 		return c.JSON(fiber.Map{"servers": []interface{}{}})
@@ -38,16 +58,11 @@ func (h *ServerHandler) List(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"servers": servers})
 }
 
-// Get returns a specific server by ID
+// Get returns a specific server (only if the user owns it)
 func (h *ServerHandler) Get(c *fiber.Ctx) error {
-	id, err := uuid.Parse(c.Params("id"))
+	server, err := h.getServerForUser(c)
 	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid server ID")
-	}
-
-	server, err := h.db.GetServer(c.Context(), id)
-	if err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "server not found")
+		return err
 	}
 
 	return c.JSON(fiber.Map{"server": server})
@@ -181,17 +196,11 @@ func (h *ServerHandler) Update(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "server updated"})
 }
 
-// Delete removes a server
+// Delete removes a server (only if the user owns it)
 func (h *ServerHandler) Delete(c *fiber.Ctx) error {
-	id, err := uuid.Parse(c.Params("id"))
+	server, err := h.getServerForUser(c)
 	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid server ID")
-	}
-
-	// Fetch server to get node info
-	server, err := h.db.GetServer(c.Context(), id)
-	if err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "server not found")
+		return err
 	}
 
 	// Get node for gRPC connection
@@ -219,23 +228,18 @@ func (h *ServerHandler) Delete(c *fiber.Ctx) error {
 	}
 
 	// Remove from database
-	if err := h.db.DeleteServer(c.Context(), id); err != nil {
+	if err := h.db.DeleteServer(c.Context(), server.ID); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to delete server")
 	}
 
 	return c.JSON(fiber.Map{"message": "server deleted"})
 }
 
-// Start starts a stopped server
+// Start starts a stopped server (only if the user owns it)
 func (h *ServerHandler) Start(c *fiber.Ctx) error {
-	id, err := uuid.Parse(c.Params("id"))
+	server, err := h.getServerForUser(c)
 	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid server ID")
-	}
-
-	server, err := h.db.GetServer(c.Context(), id)
-	if err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "server not found")
+		return err
 	}
 
 	node, err := h.db.GetNodeByID(c.Context(), server.NodeID)
@@ -259,20 +263,15 @@ func (h *ServerHandler) Start(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, resp.ErrorMessage)
 	}
 
-	_ = h.db.UpdateServerStatus(c.Context(), id, models.StatusRunning)
+	_ = h.db.UpdateServerStatus(c.Context(), server.ID, models.StatusRunning)
 	return c.JSON(fiber.Map{"message": "server starting"})
 }
 
-// Stop stops a running server
+// Stop stops a running server (only if the user owns it)
 func (h *ServerHandler) Stop(c *fiber.Ctx) error {
-	id, err := uuid.Parse(c.Params("id"))
+	server, err := h.getServerForUser(c)
 	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid server ID")
-	}
-
-	server, err := h.db.GetServer(c.Context(), id)
-	if err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "server not found")
+		return err
 	}
 
 	node, err := h.db.GetNodeByID(c.Context(), server.NodeID)
@@ -299,20 +298,15 @@ func (h *ServerHandler) Stop(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, resp.ErrorMessage)
 	}
 
-	_ = h.db.UpdateServerStatus(c.Context(), id, models.StatusOffline)
+	_ = h.db.UpdateServerStatus(c.Context(), server.ID, models.StatusOffline)
 	return c.JSON(fiber.Map{"message": "server stopping"})
 }
 
-// Restart restarts a server
+// Restart restarts a server (only if the user owns it)
 func (h *ServerHandler) Restart(c *fiber.Ctx) error {
-	id, err := uuid.Parse(c.Params("id"))
+	server, err := h.getServerForUser(c)
 	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid server ID")
-	}
-
-	server, err := h.db.GetServer(c.Context(), id)
-	if err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "server not found")
+		return err
 	}
 
 	node, err := h.db.GetNodeByID(c.Context(), server.NodeID)
@@ -339,13 +333,8 @@ func (h *ServerHandler) Restart(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "server restarting"})
 }
 
-// SendCommand sends a console command to the server
+// SendCommand sends a console command to the server (only if the user owns it)
 func (h *ServerHandler) SendCommand(c *fiber.Ctx) error {
-	id, err := uuid.Parse(c.Params("id"))
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid server ID")
-	}
-
 	var req struct {
 		Command string `json:"command"`
 	}
@@ -353,9 +342,9 @@ func (h *ServerHandler) SendCommand(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 	}
 
-	server, err := h.db.GetServer(c.Context(), id)
+	server, err := h.getServerForUser(c)
 	if err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "server not found")
+		return err
 	}
 
 	node, err := h.db.GetNodeByID(c.Context(), server.NodeID)
@@ -387,16 +376,11 @@ func (h *ServerHandler) SendCommand(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "command sent", "output": output})
 }
 
-// GetLogs returns recent server logs via Agent's GetLogs RPC (non-streaming snapshot)
+// GetLogs returns recent server logs via Agent's GetLogs RPC (only if the user owns it)
 func (h *ServerHandler) GetLogs(c *fiber.Ctx) error {
-	id, err := uuid.Parse(c.Params("id"))
+	server, err := h.getServerForUser(c)
 	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid server ID")
-	}
-
-	server, err := h.db.GetServer(c.Context(), id)
-	if err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "server not found")
+		return err
 	}
 
 	node, err := h.db.GetNodeByID(c.Context(), server.NodeID)
