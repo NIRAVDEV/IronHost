@@ -81,11 +81,14 @@ type LoginRequest struct {
 
 // UserResponse represents user data in responses (no password)
 type UserResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	Username  string    `json:"username"`
-	IsAdmin   bool      `json:"is_admin"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                 uuid.UUID `json:"id"`
+	Email              string    `json:"email"`
+	Username           string    `json:"username"`
+	IsAdmin            bool      `json:"is_admin"`
+	CoinBalanceGranted int       `json:"coin_balance_granted"`
+	CoinBalanceEarned  int       `json:"coin_balance_earned"`
+	Plan               string    `json:"plan"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // AuthResponse represents login/register response
@@ -137,11 +140,14 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
 		Token: token,
 		User: UserResponse{
-			ID:        user.ID,
-			Email:     user.Email,
-			Username:  user.Username,
-			IsAdmin:   user.IsAdmin,
-			CreatedAt: user.CreatedAt,
+			ID:                 user.ID,
+			Email:              user.Email,
+			Username:           user.Username,
+			IsAdmin:            user.IsAdmin,
+			CoinBalanceGranted: user.CoinBalanceGranted,
+			CoinBalanceEarned:  user.CoinBalanceEarned,
+			Plan:               user.Plan,
+			CreatedAt:          user.CreatedAt,
 		},
 	})
 }
@@ -177,11 +183,14 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	return c.JSON(AuthResponse{
 		Token: token,
 		User: UserResponse{
-			ID:        user.ID,
-			Email:     user.Email,
-			Username:  user.Username,
-			IsAdmin:   user.IsAdmin,
-			CreatedAt: user.CreatedAt,
+			ID:                 user.ID,
+			Email:              user.Email,
+			Username:           user.Username,
+			IsAdmin:            user.IsAdmin,
+			CoinBalanceGranted: user.CoinBalanceGranted,
+			CoinBalanceEarned:  user.CoinBalanceEarned,
+			Plan:               user.Plan,
+			CreatedAt:          user.CreatedAt,
 		},
 	})
 }
@@ -196,11 +205,14 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(UserResponse{
-		ID:        user.ID,
-		Email:     user.Email,
-		Username:  user.Username,
-		IsAdmin:   user.IsAdmin,
-		CreatedAt: user.CreatedAt,
+		ID:                 user.ID,
+		Email:              user.Email,
+		Username:           user.Username,
+		IsAdmin:            user.IsAdmin,
+		CoinBalanceGranted: user.CoinBalanceGranted,
+		CoinBalanceEarned:  user.CoinBalanceEarned,
+		Plan:               user.Plan,
+		CreatedAt:          user.CreatedAt,
 	})
 }
 

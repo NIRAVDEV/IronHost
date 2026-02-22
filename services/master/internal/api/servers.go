@@ -87,8 +87,15 @@ func (h *ServerHandler) Create(c *fiber.Ctx) error {
 	// Create server model with defaults
 	server := models.NewServerFromRequest(req, userID)
 
+	// Deduct 50 IHC for server creation
+	if err := h.db.SpendCoins(c.Context(), userID, 50, "Server creation: "+server.Name); err != nil {
+		return fiber.NewError(fiber.StatusPaymentRequired, err.Error())
+	}
+
 	// 1. Save to database
 	if err := h.db.CreateServer(c.Context(), server); err != nil {
+		// Refund coins if DB save fails
+		_ = h.db.AddCoins(c.Context(), userID, 50, "refund", "earned", "Server creation failed - refund")
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to save server: "+err.Error())
 	}
 
@@ -232,7 +239,11 @@ func (h *ServerHandler) Delete(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to delete server")
 	}
 
-	return c.JSON(fiber.Map{"message": "server deleted"})
+	// Refund 25 IHC on server deletion
+	userID := c.Locals("userID").(uuid.UUID)
+	_ = h.db.AddCoins(c.Context(), userID, 25, "refund", "earned", "Server deleted: "+server.Name)
+
+	return c.JSON(fiber.Map{"message": "server deleted", "ihc_refunded": 25})
 }
 
 // Start starts a stopped server (only if the user owns it)

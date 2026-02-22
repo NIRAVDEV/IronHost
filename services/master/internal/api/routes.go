@@ -42,6 +42,9 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 	protected.Get("/billing/subscription", billingHandler.GetSubscription)
 	protected.Post("/billing/subscribe", billingHandler.Subscribe)
 	protected.Get("/billing/invoices", billingHandler.ListInvoices)
+	protected.Get("/billing/coins", billingHandler.GetCoins)
+	protected.Post("/billing/coins/earn", billingHandler.EarnCoins)
+	protected.Post("/billing/coins/purchase", billingHandler.PurchaseCoins)
 
 	// Node management (admin only)
 	nodes := protected.Group("/nodes")

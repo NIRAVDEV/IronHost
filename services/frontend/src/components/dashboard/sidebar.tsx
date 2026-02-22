@@ -53,6 +53,20 @@ const icons = {
             <line x1="21" x2="9" y1="12" y2="12" />
         </svg>
     ),
+    coin: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="8" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+            <line x1="12" x2="12.01" y1="17" y2="17" />
+        </svg>
+    ),
+    store: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+            <line x1="3" x2="21" y1="6" y2="6" />
+            <path d="M16 10a4 4 0 0 1-8 0" />
+        </svg>
+    ),
 };
 
 const navItems = [
@@ -60,6 +74,8 @@ const navItems = [
     { href: '/dashboard/servers', label: 'Servers', icon: icons.server },
     { href: '/dashboard/nodes', label: 'Nodes', icon: icons.nodes, adminOnly: true },
     { href: '/dashboard/billing', label: 'Billing', icon: icons.creditCard },
+    { href: '/dashboard/earn', label: 'Earn', icon: icons.coin },
+    { href: '/dashboard/store', label: 'Store', icon: icons.store },
     { href: '/dashboard/settings', label: 'Settings', icon: icons.settings },
 ];
 

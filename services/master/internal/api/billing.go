@@ -1,8 +1,6 @@
 package api
 
 import (
-	"time"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
@@ -19,93 +17,104 @@ func NewBillingHandler(db *database.DB) *BillingHandler {
 	return &BillingHandler{db: db}
 }
 
-// Plan represents a subscription plan
-type Plan struct {
-	ID             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	PriceCents     int       `json:"price_cents"`
-	ServersLimit   int       `json:"servers_limit"`
-	RAMPerServerMB int       `json:"ram_per_server_mb"`
-	StorageMB      int       `json:"storage_mb"`
-	Features       []string  `json:"features"`
+// PlanInfo represents a subscription plan for the API
+type PlanInfo struct {
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	PriceCents          int      `json:"price_cents"`
+	MonthlyIHCGrant     int      `json:"monthly_ihc_grant"`
+	QueueSkip           bool     `json:"queue_skip"`
+	SessionLimitMinutes int      `json:"session_limit_minutes"` // 0 = unlimited
+	AutoShutdownMinutes int      `json:"auto_shutdown_minutes"` // 0 = disabled
+	Features            []string `json:"features"`
 }
 
-// Subscription represents a user's subscription
-type Subscription struct {
-	ID               uuid.UUID `json:"id"`
-	UserID           uuid.UUID `json:"user_id"`
-	PlanID           uuid.UUID `json:"plan_id"`
-	Plan             Plan      `json:"plan"`
-	Status           string    `json:"status"`
-	CurrentPeriodEnd time.Time `json:"current_period_end"`
-	CreatedAt        time.Time `json:"created_at"`
-}
-
-// Invoice represents a billing invoice
-type Invoice struct {
-	ID          uuid.UUID `json:"id"`
-	UserID      uuid.UUID `json:"user_id"`
-	AmountCents int       `json:"amount_cents"`
-	Status      string    `json:"status"`
-	InvoiceDate time.Time `json:"invoice_date"`
-}
-
-// Default plans (in production, these would be in the database)
-var defaultPlans = []Plan{
-	{
-		ID:             uuid.MustParse("00000000-0000-0000-0000-000000000001"),
-		Name:           "Starter",
-		PriceCents:     500,
-		ServersLimit:   1,
-		RAMPerServerMB: 2048,
-		StorageMB:      10240,
-		Features:       []string{"1 Server", "2 GB RAM", "10 GB Storage", "Basic Support"},
+// Available plans
+var planRegistry = map[string]PlanInfo{
+	"free": {
+		ID:                  "free",
+		Name:                "Free",
+		PriceCents:          0,
+		MonthlyIHCGrant:     100,
+		QueueSkip:           false,
+		SessionLimitMinutes: 60,
+		AutoShutdownMinutes: 10,
+		Features: []string{
+			"100 IHC monthly (expires if unused)",
+			"Unlimited servers",
+			"1 hour session limit",
+			"Wait in queue",
+			"Auto-shutdown after 10 min idle",
+		},
 	},
-	{
-		ID:             uuid.MustParse("00000000-0000-0000-0000-000000000002"),
-		Name:           "Pro",
-		PriceCents:     1500,
-		ServersLimit:   5,
-		RAMPerServerMB: 8192,
-		StorageMB:      51200,
-		Features:       []string{"5 Servers", "8 GB RAM each", "50 GB Storage", "Priority Support", "Custom Domain"},
+	"pro": {
+		ID:                  "pro",
+		Name:                "Pro",
+		PriceCents:          1000,
+		MonthlyIHCGrant:     500,
+		QueueSkip:           true,
+		SessionLimitMinutes: 0,
+		AutoShutdownMinutes: 0,
+		Features: []string{
+			"500 IHC monthly",
+			"Unlimited servers",
+			"Unlimited session time",
+			"Skip queue — instant start",
+			"No auto-shutdown",
+		},
 	},
-	{
-		ID:             uuid.MustParse("00000000-0000-0000-0000-000000000003"),
-		Name:           "Enterprise",
-		PriceCents:     4900,
-		ServersLimit:   100,
-		RAMPerServerMB: 32768,
-		StorageMB:      512000,
-		Features:       []string{"Unlimited Servers", "32 GB RAM each", "500 GB Storage", "24/7 Support", "Dedicated IP", "DDoS Protection"},
+	"enterprise": {
+		ID:                  "enterprise",
+		Name:                "Enterprise",
+		PriceCents:          2500,
+		MonthlyIHCGrant:     2000,
+		QueueSkip:           true,
+		SessionLimitMinutes: 0,
+		AutoShutdownMinutes: 0,
+		Features: []string{
+			"2000 IHC monthly",
+			"Unlimited servers",
+			"Unlimited session time",
+			"Skip queue — instant start",
+			"No auto-shutdown",
+			"Priority support",
+		},
 	},
 }
 
 // ListPlans returns available subscription plans
 func (h *BillingHandler) ListPlans(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{"plans": defaultPlans})
+	plans := []PlanInfo{
+		planRegistry["free"],
+		planRegistry["pro"],
+		planRegistry["enterprise"],
+	}
+	return c.JSON(fiber.Map{"plans": plans})
 }
 
-// GetSubscription returns the user's current subscription
+// GetSubscription returns the user's current plan + coin balances
 func (h *BillingHandler) GetSubscription(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uuid.UUID)
 
-	// TODO: Fetch from database
-	// For now, return mock data
-	subscription := Subscription{
-		ID:               uuid.New(),
-		UserID:           userID,
-		PlanID:           defaultPlans[1].ID,
-		Plan:             defaultPlans[1], // Pro plan
-		Status:           "active",
-		CurrentPeriodEnd: time.Now().AddDate(0, 1, 0),
-		CreatedAt:        time.Now().AddDate(0, -1, 0),
+	user, err := h.db.GetUserByID(c.Context(), userID)
+	if err != nil || user == nil {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
 	}
 
-	return c.JSON(subscription)
+	plan, ok := planRegistry[user.Plan]
+	if !ok {
+		plan = planRegistry["free"]
+	}
+
+	return c.JSON(fiber.Map{
+		"plan":                 plan,
+		"coin_balance_granted": user.CoinBalanceGranted,
+		"coin_balance_earned":  user.CoinBalanceEarned,
+		"coin_balance_total":   user.CoinBalanceGranted + user.CoinBalanceEarned,
+	})
 }
 
-// Subscribe subscribes user to a plan
+// Subscribe changes user's subscription plan
 func (h *BillingHandler) Subscribe(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uuid.UUID)
 
@@ -116,68 +125,133 @@ func (h *BillingHandler) Subscribe(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 	}
 
-	planID, err := uuid.Parse(req.PlanID)
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid plan ID")
-	}
-
-	// Find plan
-	var selectedPlan *Plan
-	for _, p := range defaultPlans {
-		if p.ID == planID {
-			selectedPlan = &p
-			break
-		}
-	}
-	if selectedPlan == nil {
+	if _, ok := planRegistry[req.PlanID]; !ok {
 		return fiber.NewError(fiber.StatusNotFound, "plan not found")
 	}
 
-	// TODO: Integrate with payment processor (Stripe)
-	// TODO: Save subscription to database
-
-	subscription := Subscription{
-		ID:               uuid.New(),
-		UserID:           userID,
-		PlanID:           selectedPlan.ID,
-		Plan:             *selectedPlan,
-		Status:           "active",
-		CurrentPeriodEnd: time.Now().AddDate(0, 1, 0),
-		CreatedAt:        time.Now(),
+	// Prevent subscribing to same plan
+	user, err := h.db.GetUserByID(c.Context(), userID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to get user")
+	}
+	if user.Plan == req.PlanID {
+		return fiber.NewError(fiber.StatusBadRequest, "already on this plan")
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(subscription)
+	// Update plan (grants IHC automatically)
+	if err := h.db.UpdateUserPlan(c.Context(), userID, req.PlanID); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to update plan")
+	}
+
+	// Fetch updated user
+	user, _ = h.db.GetUserByID(c.Context(), userID)
+	plan := planRegistry[req.PlanID]
+
+	return c.JSON(fiber.Map{
+		"message":              "Plan updated successfully",
+		"plan":                 plan,
+		"coin_balance_granted": user.CoinBalanceGranted,
+		"coin_balance_earned":  user.CoinBalanceEarned,
+		"coin_balance_total":   user.CoinBalanceGranted + user.CoinBalanceEarned,
+	})
 }
 
-// ListInvoices returns the user's invoice history
+// GetCoins returns coin balance and recent transactions
+func (h *BillingHandler) GetCoins(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(uuid.UUID)
+
+	user, err := h.db.GetUserByID(c.Context(), userID)
+	if err != nil || user == nil {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+
+	transactions, err := h.db.GetCoinTransactions(c.Context(), userID, 20)
+	if err != nil {
+		transactions = []database.CoinTransaction{}
+	}
+
+	return c.JSON(fiber.Map{
+		"coin_balance_granted": user.CoinBalanceGranted,
+		"coin_balance_earned":  user.CoinBalanceEarned,
+		"coin_balance_total":   user.CoinBalanceGranted + user.CoinBalanceEarned,
+		"transactions":         transactions,
+	})
+}
+
+// EarnCoins adds earned coins (from the earn page timer)
+func (h *BillingHandler) EarnCoins(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(uuid.UUID)
+
+	var req struct {
+		Amount int `json:"amount"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.Amount <= 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid amount")
+	}
+
+	// Cap earn per request at 10 IHC (anti-cheat)
+	if req.Amount > 10 {
+		req.Amount = 10
+	}
+
+	if err := h.db.AddCoins(c.Context(), userID, req.Amount, "earn", "earned", "Earned from timer"); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to add coins")
+	}
+
+	user, _ := h.db.GetUserByID(c.Context(), userID)
+	return c.JSON(fiber.Map{
+		"message":              "Coins earned!",
+		"amount":               req.Amount,
+		"coin_balance_granted": user.CoinBalanceGranted,
+		"coin_balance_earned":  user.CoinBalanceEarned,
+		"coin_balance_total":   user.CoinBalanceGranted + user.CoinBalanceEarned,
+	})
+}
+
+// PurchaseCoins adds purchased coins (mock payment for now)
+func (h *BillingHandler) PurchaseCoins(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(uuid.UUID)
+
+	var req struct {
+		PackageID string `json:"package_id"` // "100", "500", "2000"
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
+	}
+
+	packages := map[string]int{
+		"100":  100,
+		"500":  500,
+		"2000": 2000,
+	}
+
+	amount, ok := packages[req.PackageID]
+	if !ok {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid package")
+	}
+
+	if err := h.db.AddCoins(c.Context(), userID, amount, "purchase", "earned", "Purchased IronHostCoin package"); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to add coins")
+	}
+
+	user, _ := h.db.GetUserByID(c.Context(), userID)
+	return c.JSON(fiber.Map{
+		"message":              "Coins purchased successfully!",
+		"amount":               amount,
+		"coin_balance_granted": user.CoinBalanceGranted,
+		"coin_balance_earned":  user.CoinBalanceEarned,
+		"coin_balance_total":   user.CoinBalanceGranted + user.CoinBalanceEarned,
+	})
+}
+
+// ListInvoices returns the user's coin transaction history (replaces old invoices)
 func (h *BillingHandler) ListInvoices(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uuid.UUID)
 
-	// TODO: Fetch from database
-	// For now, return mock data
-	invoices := []Invoice{
-		{
-			ID:          uuid.New(),
-			UserID:      userID,
-			AmountCents: 1500,
-			Status:      "paid",
-			InvoiceDate: time.Now().AddDate(0, 0, -1),
-		},
-		{
-			ID:          uuid.New(),
-			UserID:      userID,
-			AmountCents: 1500,
-			Status:      "paid",
-			InvoiceDate: time.Now().AddDate(0, -1, -1),
-		},
-		{
-			ID:          uuid.New(),
-			UserID:      userID,
-			AmountCents: 1500,
-			Status:      "paid",
-			InvoiceDate: time.Now().AddDate(0, -2, -1),
-		},
+	transactions, err := h.db.GetCoinTransactions(c.Context(), userID, 50)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to get transactions")
 	}
 
-	return c.JSON(fiber.Map{"invoices": invoices})
+	return c.JSON(fiber.Map{"transactions": transactions})
 }

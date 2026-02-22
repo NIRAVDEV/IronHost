@@ -48,6 +48,9 @@ export interface User {
     id: string;
     email: string;
     username: string;
+    coin_balance_granted: number;
+    coin_balance_earned: number;
+    plan: string;
     created_at: string;
 }
 
@@ -84,24 +87,28 @@ export interface Plan {
     id: string;
     name: string;
     price_cents: number;
-    servers_limit: number;
-    ram_per_server_mb: number;
-    storage_mb: number;
+    monthly_ihc_grant: number;
+    queue_skip: boolean;
+    session_limit_minutes: number;
+    auto_shutdown_minutes: number;
     features: string[];
 }
 
-export interface Subscription {
+export interface CoinTransaction {
     id: string;
-    plan: Plan;
-    status: string;
-    current_period_end: string;
+    user_id: string;
+    amount: number;
+    type: string;
+    source: string;
+    description: string;
+    created_at: string;
 }
 
-export interface Invoice {
-    id: string;
-    amount_cents: number;
-    status: string;
-    invoice_date: string;
+export interface CoinBalance {
+    coin_balance_granted: number;
+    coin_balance_earned: number;
+    coin_balance_total: number;
+    transactions?: CoinTransaction[];
 }
 
 // Servers API
@@ -244,17 +251,45 @@ export const billingApi = {
     },
 
     getSubscription: async () => {
-        const { data } = await api.get<Subscription>('/billing/subscription');
+        const { data } = await api.get<{ plan: Plan; coin_balance_granted: number; coin_balance_earned: number; coin_balance_total: number }>('/billing/subscription');
         return data;
     },
 
     subscribe: async (planId: string) => {
-        const { data } = await api.post<Subscription>('/billing/subscribe', { plan_id: planId });
+        const { data } = await api.post('/billing/subscribe', { plan_id: planId });
         return data;
     },
 
-    getInvoices: async () => {
-        const { data } = await api.get<{ invoices: Invoice[] }>('/billing/invoices');
-        return data.invoices;
+    getCoins: async (): Promise<CoinBalance> => {
+        const { data } = await api.get<CoinBalance>('/billing/coins');
+        return data;
+    },
+
+    earnCoins: async (amount: number) => {
+        const { data } = await api.post('/billing/coins/earn', { amount });
+        return data;
+    },
+
+    purchaseCoins: async (packageId: string) => {
+        const { data } = await api.post('/billing/coins/purchase', { package_id: packageId });
+        return data;
+    },
+
+    getTransactions: async () => {
+        const { data } = await api.get<{ transactions: CoinTransaction[] }>('/billing/invoices');
+        return data.transactions || [];
+    },
+};
+
+// User API
+export const userApi = {
+    getMe: async (): Promise<User> => {
+        const { data } = await api.get<User>('/auth/me');
+        return data;
+    },
+
+    updateProfile: async (profileData: { username: string }) => {
+        const { data } = await api.put('/auth/me', profileData);
+        return data;
     },
 };
