@@ -21,14 +21,15 @@ import (
 
 	"github.com/ironhost/agent/internal/docker"
 	agentgrpc "github.com/ironhost/agent/internal/grpc"
+	"github.com/ironhost/agent/internal/sysinfo"
 )
 
 var (
 	port      = flag.Int("port", 8443, "gRPC server port")
-	certFile  = flag.String("cert", "/etc/ironhost/certs/server.crt", "TLS certificate file")
-	keyFile   = flag.String("key", "/etc/ironhost/certs/server.key", "TLS private key file")
-	caFile    = flag.String("ca", "/etc/ironhost/certs/ca.crt", "CA certificate for client verification")
-	dataDir   = flag.String("data", "/var/lib/ironhost", "Data directory for server volumes")
+	certFile  = flag.String("cert", sysinfo.DefaultCertDir()+"/server.crt", "TLS certificate file")
+	keyFile   = flag.String("key", sysinfo.DefaultCertDir()+"/server.key", "TLS private key file")
+	caFile    = flag.String("ca", sysinfo.DefaultCertDir()+"/ca.crt", "CA certificate for client verification")
+	dataDir   = flag.String("data", sysinfo.DefaultDataDir(), "Data directory for server volumes")
 	nodeID    = flag.String("node-id", "", "Unique node identifier")
 	insecure  = flag.Bool("insecure", false, "Run without TLS (for development)")
 	authToken = flag.String("token", "", "Authentication token (required in insecure mode)")

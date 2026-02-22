@@ -50,6 +50,7 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 	nodes.Get("/", nodeHandler.List)
 	nodes.Get("/:id", nodeHandler.Get)
 	nodes.Post("/", nodeHandler.Create)
+	nodes.Post("/probe", nodeHandler.Probe)
 	nodes.Put("/:id", nodeHandler.Update)
 	nodes.Delete("/:id", nodeHandler.Delete)
 	nodes.Get("/:id/stats", nodeHandler.GetStats)

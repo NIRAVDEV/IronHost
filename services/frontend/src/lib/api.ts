@@ -70,6 +70,8 @@ export interface Node {
     id: string;
     name: string;
     fqdn: string;
+    scheme: string;
+    grpc_port: number;
     memory_total: number;
     memory_allocated: number;
     disk_total: number;
@@ -189,6 +191,46 @@ export const nodesApi = {
 
     delete: async (id: string) => {
         await api.delete(`/nodes/${id}`);
+    },
+
+    probe: async (probeData: {
+        fqdn: string;
+        grpc_port: number;
+        scheme?: string;
+        daemon_token: string;
+    }) => {
+        const { data } = await api.post<{
+            success: boolean;
+            reachable: boolean;
+            message?: string;
+            stats: {
+                total_memory_bytes: number;
+                available_memory_bytes: number;
+                total_disk_bytes: number;
+                available_disk_bytes: number;
+                cpu_usage_percent: number;
+                running_containers: number;
+                uptime_seconds: number;
+            } | null;
+        }>('/nodes/probe', probeData);
+        return data;
+    },
+
+    getStats: async (id: string) => {
+        const { data } = await api.get<{
+            stats: {
+                node_id: string;
+                node_name: string;
+                total_memory_bytes: number;
+                available_memory_bytes: number;
+                total_disk_bytes: number;
+                available_disk_bytes: number;
+                cpu_usage_percent: number;
+                running_containers: number;
+                uptime_seconds: number;
+            };
+        }>(`/nodes/${id}/stats`);
+        return data.stats;
     },
 };
 

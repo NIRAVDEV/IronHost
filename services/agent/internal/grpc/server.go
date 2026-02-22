@@ -16,6 +16,7 @@ import (
 
 	"github.com/ironhost/agent/internal/docker"
 	agentpb "github.com/ironhost/agent/internal/grpc/ironhost/v1"
+	"github.com/ironhost/agent/internal/sysinfo"
 )
 
 // AgentService implements the gRPC AgentService
@@ -351,10 +352,21 @@ func (s *AgentService) GetLogs(ctx context.Context, req *agentpb.ServerIdentifie
 
 // GetNodeStats returns resource stats for this node
 func (s *AgentService) GetNodeStats(ctx context.Context, _ *emptypb.Empty) (*agentpb.NodeStats, error) {
-	// TODO: Implement proper system resource stats
+	info := sysinfo.GetAll(s.dataDir)
+
+	s.mu.RLock()
+	containerCount := int32(len(s.containers))
+	s.mu.RUnlock()
+
 	return &agentpb.NodeStats{
-		NodeId:            s.nodeID,
-		RunningContainers: int32(len(s.containers)),
+		NodeId:               s.nodeID,
+		TotalMemoryBytes:     info.TotalMemoryBytes,
+		AvailableMemoryBytes: info.AvailableMemoryBytes,
+		TotalDiskBytes:       info.TotalDiskBytes,
+		AvailableDiskBytes:   info.AvailableDiskBytes,
+		CpuUsagePercent:      info.CPUUsagePercent,
+		RunningContainers:    containerCount,
+		UptimeSeconds:        info.UptimeSeconds,
 	}, nil
 }
 

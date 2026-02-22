@@ -1,11 +1,21 @@
 package api
 
 import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/ironhost/master/internal/database"
 	mastergrpc "github.com/ironhost/master/internal/grpc"
+	agentpb "github.com/ironhost/master/internal/grpc/ironhost/v1"
 )
 
 // NodeHandler handles node-related API requests
@@ -101,19 +111,130 @@ func (h *NodeHandler) Delete(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "node deleted"})
 }
 
-// GetStats returns real-time resource stats from the node
+// GetStats returns real-time resource stats from a registered node
 func (h *NodeHandler) GetStats(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid node ID")
 	}
 
-	// TODO:
-	// 1. Get node from database
-	// 2. Connect to agent via gRPC
-	// 3. Call GetNodeStats RPC
-	_ = id
-	return c.JSON(fiber.Map{"stats": nil})
+	// Get node from database
+	node, err := h.db.GetNodeByID(c.Context(), id)
+	if err != nil || node == nil {
+		return fiber.NewError(fiber.StatusNotFound, "node not found")
+	}
+
+	// Connect to agent via gRPC
+	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	if err != nil {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "failed to connect to agent: "+err.Error())
+	}
+
+	client := agentpb.NewAgentServiceClient(conn)
+
+	// Add token auth
+	ctx := metadata.AppendToOutgoingContext(
+		context.Background(),
+		"authorization", "Bearer "+node.DaemonTokenHash,
+	)
+
+	// Call GetNodeStats RPC
+	stats, err := client.GetNodeStats(ctx, &emptypb.Empty{})
+	if err != nil {
+		log.Printf("GetNodeStats RPC failed for node %s: %v", node.Name, err)
+		return fiber.NewError(fiber.StatusServiceUnavailable, "failed to get node stats: "+err.Error())
+	}
+
+	return c.JSON(fiber.Map{
+		"stats": fiber.Map{
+			"node_id":                node.ID,
+			"node_name":              node.Name,
+			"total_memory_bytes":     stats.TotalMemoryBytes,
+			"available_memory_bytes": stats.AvailableMemoryBytes,
+			"total_disk_bytes":       stats.TotalDiskBytes,
+			"available_disk_bytes":   stats.AvailableDiskBytes,
+			"cpu_usage_percent":      stats.CpuUsagePercent,
+			"running_containers":     stats.RunningContainers,
+			"uptime_seconds":         stats.UptimeSeconds,
+		},
+	})
+}
+
+// Probe tests connection to an agent and returns auto-detected system resources
+// This is called BEFORE saving the node to verify connectivity and get resource info
+func (h *NodeHandler) Probe(c *fiber.Ctx) error {
+	var req struct {
+		FQDN        string `json:"fqdn"`
+		GRPCPort    int    `json:"grpc_port"`
+		Scheme      string `json:"scheme"`
+		DaemonToken string `json:"daemon_token"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
+	}
+
+	if req.FQDN == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "fqdn is required")
+	}
+	if req.GRPCPort == 0 {
+		req.GRPCPort = 8443
+	}
+
+	address := fmt.Sprintf("%s:%d", req.FQDN, req.GRPCPort)
+
+	// Create a temporary gRPC connection (not via pool — this node isn't saved yet)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext(ctx, address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
+	if err != nil {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "failed to connect to agent at "+address+": "+err.Error())
+	}
+	defer conn.Close()
+
+	client := agentpb.NewAgentServiceClient(conn)
+
+	// Add token auth
+	rpcCtx := metadata.AppendToOutgoingContext(ctx,
+		"authorization", "Bearer "+req.DaemonToken,
+	)
+
+	// First, ping to verify authentication
+	_, err = client.Ping(rpcCtx, &emptypb.Empty{})
+	if err != nil {
+		return fiber.NewError(fiber.StatusUnauthorized, "agent connection failed (bad token?): "+err.Error())
+	}
+
+	// Then, get full system stats
+	stats, err := client.GetNodeStats(rpcCtx, &emptypb.Empty{})
+	if err != nil {
+		log.Printf("Probe: GetNodeStats failed for %s: %v", address, err)
+		// Ping worked so agent is reachable, just stats failed
+		return c.JSON(fiber.Map{
+			"success":   true,
+			"reachable": true,
+			"stats":     nil,
+			"message":   "Agent reachable but stats unavailable",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success":   true,
+		"reachable": true,
+		"stats": fiber.Map{
+			"total_memory_bytes":     stats.TotalMemoryBytes,
+			"available_memory_bytes": stats.AvailableMemoryBytes,
+			"total_disk_bytes":       stats.TotalDiskBytes,
+			"available_disk_bytes":   stats.AvailableDiskBytes,
+			"cpu_usage_percent":      stats.CpuUsagePercent,
+			"running_containers":     stats.RunningContainers,
+			"uptime_seconds":         stats.UptimeSeconds,
+		},
+	})
 }
 
 // AllocationHandler handles allocation-related API requests
