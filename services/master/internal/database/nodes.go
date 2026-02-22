@@ -15,6 +15,7 @@ type Node struct {
 	FQDN            string    `json:"fqdn"`
 	Scheme          string    `json:"scheme"`
 	GRPCPort        int       `json:"grpc_port"`
+	Location        string    `json:"location"`
 	MemoryTotal     int64     `json:"memory_total"`
 	MemoryAllocated int64     `json:"memory_allocated"`
 	DiskTotal       int64     `json:"disk_total"`
@@ -26,13 +27,14 @@ type Node struct {
 }
 
 // CreateNode creates a new node in the database
-func (db *DB) CreateNode(ctx context.Context, name, fqdn, scheme string, grpcPort int, memoryTotal, diskTotal int64, daemonTokenHash string) (*Node, error) {
+func (db *DB) CreateNode(ctx context.Context, name, fqdn, scheme string, grpcPort int, memoryTotal, diskTotal int64, daemonTokenHash, location string) (*Node, error) {
 	node := &Node{
 		ID:              uuid.New(),
 		Name:            name,
 		FQDN:            fqdn,
 		Scheme:          scheme,
 		GRPCPort:        grpcPort,
+		Location:        location,
 		MemoryTotal:     memoryTotal,
 		DiskTotal:       diskTotal,
 		DaemonTokenHash: daemonTokenHash,
@@ -41,9 +43,9 @@ func (db *DB) CreateNode(ctx context.Context, name, fqdn, scheme string, grpcPor
 	}
 
 	_, err := db.Pool.Exec(ctx, `
-		INSERT INTO nodes (id, name, fqdn, scheme, grpc_port, memory_total, disk_total, daemon_token_hash, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, node.ID, node.Name, node.FQDN, node.Scheme, node.GRPCPort, node.MemoryTotal, node.DiskTotal, node.DaemonTokenHash, node.CreatedAt, node.UpdatedAt)
+		INSERT INTO nodes (id, name, fqdn, scheme, grpc_port, location, memory_total, disk_total, daemon_token_hash, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`, node.ID, node.Name, node.FQDN, node.Scheme, node.GRPCPort, node.Location, node.MemoryTotal, node.DiskTotal, node.DaemonTokenHash, node.CreatedAt, node.UpdatedAt)
 
 	if err != nil {
 		return nil, err
@@ -56,9 +58,9 @@ func (db *DB) CreateNode(ctx context.Context, name, fqdn, scheme string, grpcPor
 func (db *DB) GetNodeByID(ctx context.Context, id uuid.UUID) (*Node, error) {
 	var node Node
 	err := db.Pool.QueryRow(ctx, `
-		SELECT id, name, fqdn, scheme, grpc_port, memory_total, memory_allocated, disk_total, disk_allocated, daemon_token_hash, maintenance_mode, created_at, updated_at
+		SELECT id, name, fqdn, scheme, grpc_port, location, memory_total, memory_allocated, disk_total, disk_allocated, daemon_token_hash, maintenance_mode, created_at, updated_at
 		FROM nodes WHERE id = $1
-	`, id).Scan(&node.ID, &node.Name, &node.FQDN, &node.Scheme, &node.GRPCPort, &node.MemoryTotal, &node.MemoryAllocated, &node.DiskTotal, &node.DiskAllocated, &node.DaemonTokenHash, &node.MaintenanceMode, &node.CreatedAt, &node.UpdatedAt)
+	`, id).Scan(&node.ID, &node.Name, &node.FQDN, &node.Scheme, &node.GRPCPort, &node.Location, &node.MemoryTotal, &node.MemoryAllocated, &node.DiskTotal, &node.DiskAllocated, &node.DaemonTokenHash, &node.MaintenanceMode, &node.CreatedAt, &node.UpdatedAt)
 
 	if err != nil {
 		return nil, err
@@ -70,7 +72,7 @@ func (db *DB) GetNodeByID(ctx context.Context, id uuid.UUID) (*Node, error) {
 // ListNodes returns all nodes
 func (db *DB) ListNodes(ctx context.Context) ([]*Node, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT id, name, fqdn, scheme, grpc_port, memory_total, memory_allocated, disk_total, disk_allocated, daemon_token_hash, maintenance_mode, created_at, updated_at
+		SELECT id, name, fqdn, scheme, grpc_port, location, memory_total, memory_allocated, disk_total, disk_allocated, daemon_token_hash, maintenance_mode, created_at, updated_at
 		FROM nodes ORDER BY name
 	`)
 	if err != nil {
@@ -81,7 +83,7 @@ func (db *DB) ListNodes(ctx context.Context) ([]*Node, error) {
 	var nodes []*Node
 	for rows.Next() {
 		var node Node
-		if err := rows.Scan(&node.ID, &node.Name, &node.FQDN, &node.Scheme, &node.GRPCPort, &node.MemoryTotal, &node.MemoryAllocated, &node.DiskTotal, &node.DiskAllocated, &node.DaemonTokenHash, &node.MaintenanceMode, &node.CreatedAt, &node.UpdatedAt); err != nil {
+		if err := rows.Scan(&node.ID, &node.Name, &node.FQDN, &node.Scheme, &node.GRPCPort, &node.Location, &node.MemoryTotal, &node.MemoryAllocated, &node.DiskTotal, &node.DiskAllocated, &node.DaemonTokenHash, &node.MaintenanceMode, &node.CreatedAt, &node.UpdatedAt); err != nil {
 			return nil, err
 		}
 		nodes = append(nodes, &node)

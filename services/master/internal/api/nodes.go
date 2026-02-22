@@ -55,6 +55,7 @@ func (h *NodeHandler) Create(c *fiber.Ctx) error {
 		FQDN        string `json:"fqdn"`
 		Scheme      string `json:"scheme"`
 		GRPCPort    int    `json:"grpc_port"`
+		Location    string `json:"location"`
 		MemoryTotal int64  `json:"memory_total"`
 		DiskTotal   int64  `json:"disk_total"`
 		DaemonToken string `json:"daemon_token"`
@@ -75,7 +76,7 @@ func (h *NodeHandler) Create(c *fiber.Ctx) error {
 	// For now we just store plaintext since Agent also gets plaintext
 	daemonTokenHash := req.DaemonToken
 
-	node, err := h.db.CreateNode(c.Context(), req.Name, req.FQDN, req.Scheme, req.GRPCPort, req.MemoryTotal, req.DiskTotal, daemonTokenHash)
+	node, err := h.db.CreateNode(c.Context(), req.Name, req.FQDN, req.Scheme, req.GRPCPort, req.MemoryTotal, req.DiskTotal, daemonTokenHash, req.Location)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to create node: "+err.Error())
 	}

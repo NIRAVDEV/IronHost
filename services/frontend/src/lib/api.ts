@@ -72,6 +72,7 @@ export interface Node {
     fqdn: string;
     scheme: string;
     grpc_port: number;
+    location: string;
     memory_total: number;
     memory_allocated: number;
     disk_total: number;
@@ -172,6 +173,7 @@ export const nodesApi = {
         name: string;
         fqdn: string;
         grpc_port: number;
+        location?: string;
         memory_total: number;
         disk_total: number;
         daemon_token: string;

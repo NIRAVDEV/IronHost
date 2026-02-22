@@ -54,6 +54,7 @@ export default function AddNodePage() {
     const [name, setName] = useState('');
     const [fqdn, setFqdn] = useState('');
     const [grpcPort, setGrpcPort] = useState(8443);
+    const [location, setLocation] = useState('');
     const [memoryTotal, setMemoryTotal] = useState(8192); // MB
     const [diskTotal, setDiskTotal] = useState(102400); // MB
     const [daemonToken, setDaemonToken] = useState('');
@@ -111,6 +112,7 @@ export default function AddNodePage() {
                 name,
                 fqdn,
                 grpc_port: grpcPort,
+                location,
                 memory_total: memoryTotal,
                 disk_total: diskTotal,
                 daemon_token: daemonToken,
@@ -158,6 +160,24 @@ export default function AddNodePage() {
                             required
                             className="w-full px-4 py-3 rounded-lg bg-background border border-border focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition-colors text-foreground placeholder:text-muted-foreground"
                         />
+                    </div>
+
+                    {/* Location */}
+                    <div>
+                        <label htmlFor="location" className="block text-sm font-medium text-foreground mb-2">
+                            Location / Region
+                        </label>
+                        <input
+                            type="text"
+                            id="location"
+                            value={location}
+                            onChange={(e) => setLocation(e.target.value)}
+                            placeholder="Gujarat, India"
+                            className="w-full px-4 py-3 rounded-lg bg-background border border-border focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition-colors text-foreground placeholder:text-muted-foreground"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Shown to users when choosing a region for their server
+                        </p>
                     </div>
 
                     {/* FQDN/IP */}
