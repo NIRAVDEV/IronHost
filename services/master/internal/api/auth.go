@@ -81,14 +81,20 @@ type LoginRequest struct {
 
 // UserResponse represents user data in responses (no password)
 type UserResponse struct {
-	ID                 uuid.UUID `json:"id"`
-	Email              string    `json:"email"`
-	Username           string    `json:"username"`
-	IsAdmin            bool      `json:"is_admin"`
-	CoinBalanceGranted int       `json:"coin_balance_granted"`
-	CoinBalanceEarned  int       `json:"coin_balance_earned"`
-	Plan               string    `json:"plan"`
-	CreatedAt          time.Time `json:"created_at"`
+	ID                  uuid.UUID `json:"id"`
+	Email               string    `json:"email"`
+	Username            string    `json:"username"`
+	IsAdmin             bool      `json:"is_admin"`
+	CoinBalanceGranted  int       `json:"coin_balance_granted"`
+	CoinBalanceEarned   int       `json:"coin_balance_earned"`
+	Plan                string    `json:"plan"`
+	ResourceRAM         int       `json:"resource_ram_mb"`
+	ResourceCPU         int       `json:"resource_cpu_cores"`
+	ResourceStorage     int       `json:"resource_storage_mb"`
+	ResourceRAMUsed     int       `json:"resource_ram_used_mb"`
+	ResourceCPUUsed     int       `json:"resource_cpu_used_cores"`
+	ResourceStorageUsed int       `json:"resource_storage_used_mb"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
 // AuthResponse represents login/register response
@@ -147,6 +153,9 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 			CoinBalanceGranted: user.CoinBalanceGranted,
 			CoinBalanceEarned:  user.CoinBalanceEarned,
 			Plan:               user.Plan,
+			ResourceRAM:        user.ResourceRAM,
+			ResourceCPU:        user.ResourceCPU,
+			ResourceStorage:    user.ResourceStorage,
 			CreatedAt:          user.CreatedAt,
 		},
 	})
@@ -190,6 +199,9 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 			CoinBalanceGranted: user.CoinBalanceGranted,
 			CoinBalanceEarned:  user.CoinBalanceEarned,
 			Plan:               user.Plan,
+			ResourceRAM:        user.ResourceRAM,
+			ResourceCPU:        user.ResourceCPU,
+			ResourceStorage:    user.ResourceStorage,
 			CreatedAt:          user.CreatedAt,
 		},
 	})
@@ -204,15 +216,24 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")
 	}
 
+	// Get resource usage
+	usage, _ := h.db.GetResourceUsage(c.Context(), userID)
+
 	return c.JSON(UserResponse{
-		ID:                 user.ID,
-		Email:              user.Email,
-		Username:           user.Username,
-		IsAdmin:            user.IsAdmin,
-		CoinBalanceGranted: user.CoinBalanceGranted,
-		CoinBalanceEarned:  user.CoinBalanceEarned,
-		Plan:               user.Plan,
-		CreatedAt:          user.CreatedAt,
+		ID:                  user.ID,
+		Email:               user.Email,
+		Username:            user.Username,
+		IsAdmin:             user.IsAdmin,
+		CoinBalanceGranted:  user.CoinBalanceGranted,
+		CoinBalanceEarned:   user.CoinBalanceEarned,
+		Plan:                user.Plan,
+		ResourceRAM:         user.ResourceRAM,
+		ResourceCPU:         user.ResourceCPU,
+		ResourceStorage:     user.ResourceStorage,
+		ResourceRAMUsed:     usage.RAMUsed,
+		ResourceCPUUsed:     usage.CPUUsed,
+		ResourceStorageUsed: usage.StorageUsed,
+		CreatedAt:           user.CreatedAt,
 	})
 }
 

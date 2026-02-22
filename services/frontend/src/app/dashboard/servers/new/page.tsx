@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { serversApi, nodesApi, Node } from '@/lib/api';
+import { serversApi, nodesApi, userApi, Node, User } from '@/lib/api';
 
 // Country flag emoji helper – maps country names (last word of location) to flag
 function getRegionFlag(location: string): string {
@@ -50,26 +50,38 @@ export default function CreateServerPage() {
     const [nodes, setNodes] = useState<Node[]>([]);
     const [nodesLoading, setNodesLoading] = useState(true);
 
-    // Form state
     const [name, setName] = useState('');
     const [selectedRegion, setSelectedRegion] = useState('');
-    const [memoryLimit, setMemoryLimit] = useState(2048);
-    const [diskLimit, setDiskLimit] = useState(10240);
+    const [memoryLimit, setMemoryLimit] = useState(512);
+    const [diskLimit, setDiskLimit] = useState(1024);
+    const [cpuLimit, setCpuLimit] = useState(100);
     const [gameType, setGameType] = useState('VANILLA');
+    const [user, setUser] = useState<User | null>(null);
 
     useEffect(() => {
-        async function fetchNodes() {
+        async function fetchData() {
             try {
-                const data = await nodesApi.list();
-                setNodes(data || []);
+                const [nodeData, userData] = await Promise.all([
+                    nodesApi.list(),
+                    userApi.getMe(),
+                ]);
+                setNodes(nodeData || []);
+                setUser(userData);
+                // Set defaults based on available resources
+                const freeRAM = (userData.resource_ram_mb || 0) - (userData.resource_ram_used_mb || 0);
+                const freeCPU = (userData.resource_cpu_cores || 0) - (userData.resource_cpu_used_cores || 0);
+                const freeStorage = (userData.resource_storage_mb || 0) - (userData.resource_storage_used_mb || 0);
+                setMemoryLimit(Math.min(512, freeRAM));
+                setDiskLimit(Math.min(1024, freeStorage));
+                setCpuLimit(Math.min(100, freeCPU));
             } catch (err) {
-                console.error('Failed to fetch nodes:', err);
-                setError('Failed to load available regions');
+                console.error('Failed to fetch data:', err);
+                setError('Failed to load data');
             } finally {
                 setNodesLoading(false);
             }
         }
-        fetchNodes();
+        fetchData();
     }, []);
 
     // Group nodes by location into regions
@@ -128,13 +140,15 @@ export default function CreateServerPage() {
                 name,
                 node_id: bestNodeForRegion.id,
                 memory_limit: memoryLimit,
+                cpu_limit: cpuLimit,
                 disk_limit: diskLimit,
                 game_type: gameType,
             });
             router.push('/dashboard/servers');
         } catch (err: unknown) {
             console.error('Failed to create server:', err);
-            const errorMessage = err instanceof Error ? err.message : 'Failed to create server';
+            const axiosErr = err as { response?: { data?: { error?: string } } };
+            const errorMessage = axiosErr?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to create server');
             setError(errorMessage);
         } finally {
             setIsLoading(false);
@@ -149,13 +163,11 @@ export default function CreateServerPage() {
         { value: 'FABRIC', label: 'Minecraft Fabric', icon: '🧵' },
     ];
 
-    const memoryOptions = [
-        { value: 1024, label: '1 GB', desc: 'Light' },
-        { value: 2048, label: '2 GB', desc: 'Standard' },
-        { value: 4096, label: '4 GB', desc: 'Performance' },
-        { value: 8192, label: '8 GB', desc: 'Heavy' },
-        { value: 16384, label: '16 GB', desc: 'Extreme' },
-    ];
+    const freeRAM = (user?.resource_ram_mb || 0) - (user?.resource_ram_used_mb || 0);
+    const freeCPU = (user?.resource_cpu_cores || 0) - (user?.resource_cpu_used_cores || 0);
+    const freeStorage = (user?.resource_storage_mb || 0) - (user?.resource_storage_used_mb || 0);
+    const fmtMB = (mb: number) => mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
+    const fmtCPU = (c: number) => c === 0 ? '0' : `${(c / 100).toFixed(c % 100 === 0 ? 0 : 1)}`;
 
     return (
         <div className="max-w-3xl mx-auto animate-fade-in">
@@ -203,8 +215,8 @@ export default function CreateServerPage() {
                                 type="button"
                                 onClick={() => setGameType(gt.value)}
                                 className={`relative p-4 rounded-xl border-2 transition-all duration-200 text-left ${gameType === gt.value
-                                        ? 'border-primary-500 bg-primary-500/10 shadow-lg shadow-primary-500/10'
-                                        : 'border-border hover:border-muted-foreground/40 bg-background/50 hover:bg-background'
+                                    ? 'border-primary-500 bg-primary-500/10 shadow-lg shadow-primary-500/10'
+                                    : 'border-border hover:border-muted-foreground/40 bg-background/50 hover:bg-background'
                                     }`}
                             >
                                 <span className="text-2xl">{gt.icon}</span>
@@ -254,8 +266,8 @@ export default function CreateServerPage() {
                                         type="button"
                                         onClick={() => setSelectedRegion(region.location)}
                                         className={`relative w-full p-4 rounded-xl border-2 transition-all duration-200 text-left flex items-center gap-4 ${isSelected
-                                                ? 'border-primary-500 bg-primary-500/10 shadow-lg shadow-primary-500/10'
-                                                : 'border-border hover:border-muted-foreground/40 bg-background/50 hover:bg-background'
+                                            ? 'border-primary-500 bg-primary-500/10 shadow-lg shadow-primary-500/10'
+                                            : 'border-border hover:border-muted-foreground/40 bg-background/50 hover:bg-background'
                                             }`}
                                     >
                                         {/* Flag */}
@@ -295,55 +307,80 @@ export default function CreateServerPage() {
 
                 {/* Resources */}
                 <div className="glass-card rounded-xl p-6 space-y-6">
-                    {/* Memory */}
                     <div>
-                        <label className="block text-sm font-medium text-foreground mb-3">
-                            Memory (RAM)
-                        </label>
-                        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                            {memoryOptions.map((opt) => (
-                                <button
-                                    key={opt.value}
-                                    type="button"
-                                    onClick={() => setMemoryLimit(opt.value)}
-                                    className={`py-3 px-2 rounded-lg border-2 transition-all duration-200 text-center ${memoryLimit === opt.value
-                                            ? 'border-primary-500 bg-primary-500/10 shadow-md shadow-primary-500/10'
-                                            : 'border-border hover:border-muted-foreground/40 bg-background/50'
-                                        }`}
-                                >
-                                    <p className={`text-sm font-bold ${memoryLimit === opt.value ? 'text-primary-400' : 'text-foreground'
-                                        }`}>{opt.label}</p>
-                                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
-                                </button>
-                            ))}
-                        </div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Resources</label>
+                        <p className="text-xs text-muted-foreground mb-4">
+                            Allocate from your resource pool. <Link href="/dashboard/store" className="text-primary-400 hover:underline">Buy more in Store →</Link>
+                        </p>
                     </div>
 
-                    {/* Disk */}
+                    {/* RAM Slider */}
                     <div>
-                        <label htmlFor="disk" className="block text-sm font-medium text-foreground mb-2">
-                            Storage
-                        </label>
-                        <div className="flex items-center gap-4">
-                            <input
-                                type="range"
-                                id="disk"
-                                value={diskLimit}
-                                onChange={(e) => setDiskLimit(Number(e.target.value))}
-                                min={1024}
-                                max={102400}
-                                step={1024}
-                                className="flex-1 accent-primary-500 h-2"
-                                style={{ accentColor: 'var(--color-primary-500, #8b5cf6)' }}
-                            />
-                            <span className="text-sm font-semibold text-foreground min-w-[5rem] text-right tabular-nums">
-                                {(diskLimit / 1024).toFixed(1)} GB
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm text-muted-foreground">🧠 RAM</span>
+                            <span className="text-sm text-foreground font-semibold tabular-nums">
+                                {fmtMB(memoryLimit)} <span className="text-muted-foreground font-normal">/ {fmtMB(freeRAM)} free</span>
                             </span>
                         </div>
-                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                            <span>1 GB</span>
-                            <span>100 GB</span>
+                        <input
+                            type="range"
+                            value={memoryLimit}
+                            onChange={(e) => setMemoryLimit(Number(e.target.value))}
+                            min={256}
+                            max={Math.max(256, freeRAM)}
+                            step={256}
+                            className="w-full accent-primary-500 h-2"
+                            style={{ accentColor: 'var(--color-primary-500, #8b5cf6)' }}
+                        />
+                        {freeRAM < 256 && (
+                            <p className="text-xs text-red-400 mt-1">No RAM available. Purchase more in the Store.</p>
+                        )}
+                    </div>
+
+                    {/* CPU Slider */}
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm text-muted-foreground">⚡ CPU</span>
+                            <span className="text-sm text-foreground font-semibold tabular-nums">
+                                {fmtCPU(cpuLimit)} cores <span className="text-muted-foreground font-normal">/ {fmtCPU(freeCPU)} free</span>
+                            </span>
                         </div>
+                        <input
+                            type="range"
+                            value={cpuLimit}
+                            onChange={(e) => setCpuLimit(Number(e.target.value))}
+                            min={25}
+                            max={Math.max(25, freeCPU)}
+                            step={25}
+                            className="w-full accent-primary-500 h-2"
+                            style={{ accentColor: 'var(--color-primary-500, #8b5cf6)' }}
+                        />
+                        {freeCPU < 25 && (
+                            <p className="text-xs text-red-400 mt-1">No CPU available. Purchase more in the Store.</p>
+                        )}
+                    </div>
+
+                    {/* Storage Slider */}
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm text-muted-foreground">💾 Storage</span>
+                            <span className="text-sm text-foreground font-semibold tabular-nums">
+                                {fmtMB(diskLimit)} <span className="text-muted-foreground font-normal">/ {fmtMB(freeStorage)} free</span>
+                            </span>
+                        </div>
+                        <input
+                            type="range"
+                            value={diskLimit}
+                            onChange={(e) => setDiskLimit(Number(e.target.value))}
+                            min={512}
+                            max={Math.max(512, freeStorage)}
+                            step={512}
+                            className="w-full accent-primary-500 h-2"
+                            style={{ accentColor: 'var(--color-primary-500, #8b5cf6)' }}
+                        />
+                        {freeStorage < 512 && (
+                            <p className="text-xs text-red-400 mt-1">No storage available. Purchase more in the Store.</p>
+                        )}
                     </div>
                 </div>
 

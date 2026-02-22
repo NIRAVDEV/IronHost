@@ -255,3 +255,69 @@ func (h *BillingHandler) ListInvoices(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"transactions": transactions})
 }
+
+// ResourcePackage defines a purchasable resource bundle
+type ResourcePackage struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CostIHC   int    `json:"cost_ihc"`
+	RAMMb     int    `json:"ram_mb"`
+	CPUCores  int    `json:"cpu_cores"`
+	StorageMb int    `json:"storage_mb"`
+}
+
+var resourceCatalog = map[string]ResourcePackage{
+	"ram_1gb":      {ID: "ram_1gb", Name: "1 GB RAM", CostIHC: 20, RAMMb: 1024, CPUCores: 0, StorageMb: 0},
+	"ram_4gb":      {ID: "ram_4gb", Name: "4 GB RAM", CostIHC: 70, RAMMb: 4096, CPUCores: 0, StorageMb: 0},
+	"cpu_1core":    {ID: "cpu_1core", Name: "1 CPU Core", CostIHC: 30, RAMMb: 0, CPUCores: 100, StorageMb: 0},
+	"storage_5gb":  {ID: "storage_5gb", Name: "5 GB Storage", CostIHC: 15, RAMMb: 0, CPUCores: 0, StorageMb: 5120},
+	"storage_20gb": {ID: "storage_20gb", Name: "20 GB Storage", CostIHC: 50, RAMMb: 0, CPUCores: 0, StorageMb: 20480},
+}
+
+// PurchaseResource spends IHC and adds resources to the user's pool
+func (h *BillingHandler) PurchaseResource(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(uuid.UUID)
+
+	var req struct {
+		PackageID string `json:"package_id"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
+	}
+
+	pkg, ok := resourceCatalog[req.PackageID]
+	if !ok {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid resource package")
+	}
+
+	// Spend IHC
+	if err := h.db.SpendCoins(c.Context(), userID, pkg.CostIHC, "Purchased "+pkg.Name); err != nil {
+		return fiber.NewError(fiber.StatusPaymentRequired, "not enough IronHostCoin")
+	}
+
+	// Add resources
+	if err := h.db.AddResources(c.Context(), userID, pkg.RAMMb, pkg.CPUCores, pkg.StorageMb); err != nil {
+		// Refund on failure
+		_ = h.db.AddCoins(c.Context(), userID, pkg.CostIHC, "refund", "earned", "Refund for failed resource purchase")
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to add resources")
+	}
+
+	user, _ := h.db.GetUserByID(c.Context(), userID)
+	return c.JSON(fiber.Map{
+		"message":             "Resource purchased!",
+		"package":             pkg,
+		"coin_balance_total":  user.CoinBalanceGranted + user.CoinBalanceEarned,
+		"resource_ram_mb":     user.ResourceRAM,
+		"resource_cpu_cores":  user.ResourceCPU,
+		"resource_storage_mb": user.ResourceStorage,
+	})
+}
+
+// ListResourceCatalog returns available resource packages
+func (h *BillingHandler) ListResourceCatalog(c *fiber.Ctx) error {
+	packages := make([]ResourcePackage, 0, len(resourceCatalog))
+	for _, pkg := range resourceCatalog {
+		packages = append(packages, pkg)
+	}
+	return c.JSON(fiber.Map{"packages": packages})
+}

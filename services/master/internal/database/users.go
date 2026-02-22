@@ -19,6 +19,9 @@ type User struct {
 	CoinBalanceEarned  int       `json:"coin_balance_earned"`
 	Plan               string    `json:"plan"`
 	PlanUpdatedAt      time.Time `json:"plan_updated_at"`
+	ResourceRAM        int       `json:"resource_ram_mb"`
+	ResourceCPU        int       `json:"resource_cpu_cores"`
+	ResourceStorage    int       `json:"resource_storage_mb"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }
@@ -61,11 +64,11 @@ func (db *DB) CreateUser(ctx context.Context, email, passwordHash, username stri
 	return user, nil
 }
 
-const userSelectCols = `id, email, password_hash, username, COALESCE(is_admin, false), COALESCE(coin_balance_granted, 100), COALESCE(coin_balance_earned, 0), COALESCE(plan, 'free'), COALESCE(plan_updated_at, created_at), created_at, updated_at`
+const userSelectCols = `id, email, password_hash, username, COALESCE(is_admin, false), COALESCE(coin_balance_granted, 100), COALESCE(coin_balance_earned, 0), COALESCE(plan, 'free'), COALESCE(plan_updated_at, created_at), COALESCE(resource_ram_mb, 0), COALESCE(resource_cpu_cores, 0), COALESCE(resource_storage_mb, 0), created_at, updated_at`
 
 func scanUser(row interface{ Scan(dest ...any) error }) (*User, error) {
 	var user User
-	err := row.Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Username, &user.IsAdmin, &user.CoinBalanceGranted, &user.CoinBalanceEarned, &user.Plan, &user.PlanUpdatedAt, &user.CreatedAt, &user.UpdatedAt)
+	err := row.Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Username, &user.IsAdmin, &user.CoinBalanceGranted, &user.CoinBalanceEarned, &user.Plan, &user.PlanUpdatedAt, &user.ResourceRAM, &user.ResourceCPU, &user.ResourceStorage, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -244,6 +247,39 @@ func (db *DB) GetCoinTransactions(ctx context.Context, userID uuid.UUID, limit i
 	}
 
 	return txns, nil
+}
+
+// AddResources adds purchased resources to a user's pool
+func (db *DB) AddResources(ctx context.Context, userID uuid.UUID, ramMB, cpuCores, storageMB int) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE users SET
+			resource_ram_mb = COALESCE(resource_ram_mb, 0) + $2,
+			resource_cpu_cores = COALESCE(resource_cpu_cores, 0) + $3,
+			resource_storage_mb = COALESCE(resource_storage_mb, 0) + $4,
+			updated_at = $5
+		WHERE id = $1
+	`, userID, ramMB, cpuCores, storageMB, time.Now())
+	return err
+}
+
+// ResourceUsage represents how much of a user's resource pool is allocated to servers
+type ResourceUsage struct {
+	RAMUsed     int `json:"ram_used_mb"`
+	CPUUsed     int `json:"cpu_used_cores"`
+	StorageUsed int `json:"storage_used_mb"`
+}
+
+// GetResourceUsage calculates how much of a user's resources are allocated to their servers
+func (db *DB) GetResourceUsage(ctx context.Context, userID uuid.UUID) (*ResourceUsage, error) {
+	var usage ResourceUsage
+	err := db.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(memory_limit), 0), COALESCE(SUM(cpu_limit), 0), COALESCE(SUM(disk_limit), 0)
+		FROM servers WHERE user_id = $1
+	`, userID).Scan(&usage.RAMUsed, &usage.CPUUsed, &usage.StorageUsed)
+	if err != nil {
+		return &ResourceUsage{}, nil
+	}
+	return &usage, nil
 }
 
 // DeleteUser deletes a user by ID

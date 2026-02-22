@@ -51,7 +51,22 @@ export interface User {
     coin_balance_granted: number;
     coin_balance_earned: number;
     plan: string;
+    resource_ram_mb: number;
+    resource_cpu_cores: number;
+    resource_storage_mb: number;
+    resource_ram_used_mb: number;
+    resource_cpu_used_cores: number;
+    resource_storage_used_mb: number;
     created_at: string;
+}
+
+export interface ResourcePackage {
+    id: string;
+    name: string;
+    cost_ihc: number;
+    ram_mb: number;
+    cpu_cores: number;
+    storage_mb: number;
 }
 
 export interface Server {
@@ -127,6 +142,7 @@ export const serversApi = {
         name: string;
         node_id: string;
         memory_limit: number;
+        cpu_limit?: number;
         disk_limit: number;
         game_type?: string;
     }) => {
@@ -278,6 +294,16 @@ export const billingApi = {
     getTransactions: async () => {
         const { data } = await api.get<{ transactions: CoinTransaction[] }>('/billing/invoices');
         return data.transactions || [];
+    },
+
+    getResourceCatalog: async () => {
+        const { data } = await api.get<{ packages: ResourcePackage[] }>('/billing/resources');
+        return data.packages;
+    },
+
+    purchaseResource: async (packageId: string) => {
+        const { data } = await api.post('/billing/resources/purchase', { package_id: packageId });
+        return data;
     },
 };
 

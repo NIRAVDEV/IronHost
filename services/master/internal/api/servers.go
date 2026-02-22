@@ -87,6 +87,27 @@ func (h *ServerHandler) Create(c *fiber.Ctx) error {
 	// Create server model with defaults
 	server := models.NewServerFromRequest(req, userID)
 
+	// Validate user has enough resources in their pool
+	user, err := h.db.GetUserByID(c.Context(), userID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to get user")
+	}
+	usage, _ := h.db.GetResourceUsage(c.Context(), userID)
+
+	freeRAM := int64(user.ResourceRAM - usage.RAMUsed)
+	freeCPU := int64(user.ResourceCPU - usage.CPUUsed)
+	freeStorage := int64(user.ResourceStorage - usage.StorageUsed)
+
+	if server.MemoryLimit > freeRAM {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Not enough RAM: need %d MB, have %d MB free. Purchase more in the Store.", server.MemoryLimit, freeRAM))
+	}
+	if server.CPULimit > 0 && int64(server.CPULimit) > freeCPU {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Not enough CPU: need %d cores, have %d free. Purchase more in the Store.", server.CPULimit, freeCPU))
+	}
+	if server.DiskLimit > freeStorage {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("Not enough Storage: need %d MB, have %d MB free. Purchase more in the Store.", server.DiskLimit, freeStorage))
+	}
+
 	// Deduct 50 IHC for server creation
 	if err := h.db.SpendCoins(c.Context(), userID, 50, "Server creation: "+server.Name); err != nil {
 		return fiber.NewError(fiber.StatusPaymentRequired, err.Error())

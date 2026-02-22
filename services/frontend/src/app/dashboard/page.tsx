@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { serversApi, Server } from '@/lib/api';
+import { serversApi, userApi, Server, User } from '@/lib/api';
 
 // Server card component
 function ServerCard({
@@ -107,27 +107,34 @@ function StatCard({
 
 export default function DashboardPage() {
     const [servers, setServers] = useState<Server[]>([]);
+    const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        async function fetchServers() {
+        async function fetchData() {
             try {
-                const data = await serversApi.list();
-                setServers(data || []);
+                const [serverData, userData] = await Promise.all([
+                    serversApi.list(),
+                    userApi.getMe(),
+                ]);
+                setServers(serverData || []);
+                setUser(userData);
             } catch (err) {
-                console.error('Failed to fetch servers:', err);
+                console.error('Failed to fetch data:', err);
             } finally {
                 setIsLoading(false);
             }
         }
-        fetchServers();
-        const interval = setInterval(fetchServers, 10000);
+        fetchData();
+        const interval = setInterval(fetchData, 10000);
         return () => clearInterval(interval);
     }, []);
 
     const runningCount = servers.filter(s => s.status === 'running').length;
-    const totalMemory = servers.reduce((sum, s) => sum + s.memory_limit, 0);
-    const totalCpu = servers.length > 0 ? Math.round(servers.reduce((sum, s) => sum + s.cpu_limit, 0) / servers.length) : 0;
+
+    const fmtMB = (mb: number) => mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
+    const fmtCPU = (c: number) => c === 0 ? '0' : `${(c / 100).toFixed(c % 100 === 0 ? 0 : 1)}`;
+
 
     return (
         <div className="space-y-8 animate-fade-in">
@@ -144,8 +151,8 @@ export default function DashboardPage() {
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
                 <StatCard
-                    label="Total Servers"
-                    value={isLoading ? '...' : servers.length}
+                    label="Servers"
+                    value={isLoading ? '...' : `${runningCount} / ${servers.length}`}
                     icon={
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
@@ -156,46 +163,33 @@ export default function DashboardPage() {
                     }
                 />
                 <StatCard
-                    label="Running"
-                    value={isLoading ? '...' : runningCount}
+                    label="RAM"
+                    value={isLoading ? '...' : `${fmtMB(user?.resource_ram_used_mb || 0)} / ${fmtMB(user?.resource_ram_mb || 0)}`}
                     icon={
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polygon points="5 3 19 12 5 21 5 3" />
-                        </svg>
-                    }
-                />
-                <StatCard
-                    label="Total Memory"
-                    value={isLoading ? '...' : `${totalMemory} MB`}
-                    icon={
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M6 19v-3" />
-                            <path d="M10 19v-3" />
-                            <path d="M14 19v-3" />
-                            <path d="M18 19v-3" />
-                            <path d="M8 11V9" />
-                            <path d="M16 11V9" />
-                            <path d="M12 11V9" />
-                            <path d="M2 15h20" />
+                            <path d="M6 19v-3" /><path d="M10 19v-3" /><path d="M14 19v-3" /><path d="M18 19v-3" />
+                            <path d="M8 11V9" /><path d="M16 11V9" /><path d="M12 11V9" /><path d="M2 15h20" />
                             <path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z" />
                         </svg>
                     }
                 />
                 <StatCard
-                    label="Avg CPU Limit"
-                    value={isLoading ? '...' : `${totalCpu}%`}
+                    label="CPU"
+                    value={isLoading ? '...' : `${fmtCPU(user?.resource_cpu_used_cores || 0)} / ${fmtCPU(user?.resource_cpu_cores || 0)} cores`}
                     icon={
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect width="16" height="16" x="4" y="4" rx="2" />
-                            <rect width="6" height="6" x="9" y="9" rx="1" />
-                            <path d="M15 2v2" />
-                            <path d="M15 20v2" />
-                            <path d="M2 15h2" />
-                            <path d="M2 9h2" />
-                            <path d="M20 15h2" />
-                            <path d="M20 9h2" />
-                            <path d="M9 2v2" />
-                            <path d="M9 20v2" />
+                            <rect width="16" height="16" x="4" y="4" rx="2" /><rect width="6" height="6" x="9" y="9" rx="1" />
+                            <path d="M15 2v2" /><path d="M15 20v2" /><path d="M2 15h2" /><path d="M2 9h2" />
+                            <path d="M20 15h2" /><path d="M20 9h2" /><path d="M9 2v2" /><path d="M9 20v2" />
+                        </svg>
+                    }
+                />
+                <StatCard
+                    label="Storage"
+                    value={isLoading ? '...' : `${fmtMB(user?.resource_storage_used_mb || 0)} / ${fmtMB(user?.resource_storage_mb || 0)}`}
+                    icon={
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
                         </svg>
                     }
                 />
