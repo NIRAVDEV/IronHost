@@ -126,7 +126,7 @@ func (h *NodeHandler) GetStats(c *fiber.Ctx) error {
 	}
 
 	// Connect to agent via gRPC
-	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
 	if err != nil {
 		return fiber.NewError(fiber.StatusServiceUnavailable, "failed to connect to agent: "+err.Error())
 	}

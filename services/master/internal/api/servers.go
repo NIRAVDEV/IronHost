@@ -155,7 +155,7 @@ func (h *ServerHandler) Create(c *fiber.Ctx) error {
 func (h *ServerHandler) createServerOnAgent(server *models.Server, node *database.Node, allocation *models.Allocation) error {
 	log.Printf("DEBUG: Connecting to agent at %s for server %s", node.GetAddress(), server.ID)
 	// Connect to agent
-	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
 	if err != nil {
 		return fmt.Errorf("failed to connect to agent: %w", err)
 	}
@@ -316,7 +316,7 @@ func (h *ServerHandler) ResetServer(c *fiber.Ctx) error {
 
 	// Stop the server first if running
 	if server.Status == models.StatusRunning || server.Status == models.StatusStarting {
-		conn, err := h.grpcPool.GetClient(node.GetAddress())
+		conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
 		if err == nil {
 			client := agentpb.NewAgentServiceClient(conn)
 			ctx := metadata.AppendToOutgoingContext(c.Context(), "authorization", "Bearer "+node.DaemonTokenHash)
@@ -328,7 +328,7 @@ func (h *ServerHandler) ResetServer(c *fiber.Ctx) error {
 	}
 
 	// Delete container on agent
-	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to connect to agent")
 	}
@@ -377,7 +377,7 @@ func (h *ServerHandler) Delete(c *fiber.Ctx) error {
 	}
 
 	// Send DeleteServer RPC to agent
-	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
 	if err == nil {
 		client := agentpb.NewAgentServiceClient(conn)
 		ctx := metadata.AppendToOutgoingContext(
@@ -418,7 +418,7 @@ func (h *ServerHandler) Start(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "node not found")
 	}
 
-	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to connect to agent")
 	}
@@ -450,7 +450,7 @@ func (h *ServerHandler) Stop(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "node not found")
 	}
 
-	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to connect to agent")
 	}
@@ -485,7 +485,7 @@ func (h *ServerHandler) Restart(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "node not found")
 	}
 
-	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to connect to agent")
 	}
@@ -523,7 +523,7 @@ func (h *ServerHandler) SendCommand(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "node not found")
 	}
 
-	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to connect to agent")
 	}
@@ -559,7 +559,7 @@ func (h *ServerHandler) GetLogs(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "node not found")
 	}
 
-	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to connect to agent")
 	}

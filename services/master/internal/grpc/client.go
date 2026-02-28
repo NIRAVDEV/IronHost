@@ -35,7 +35,7 @@ func NewClientPool(certDir string) *ClientPool {
 }
 
 // GetClient returns a gRPC client for the specified node address
-func (p *ClientPool) GetClient(nodeAddress string) (*grpc.ClientConn, error) {
+func (p *ClientPool) GetClient(nodeAddress string, insecureMode bool) (*grpc.ClientConn, error) {
 	p.mu.RLock()
 	if conn, exists := p.clients[nodeAddress]; exists {
 		p.mu.RUnlock()
@@ -55,7 +55,7 @@ func (p *ClientPool) GetClient(nodeAddress string) (*grpc.ClientConn, error) {
 	var conn *grpc.ClientConn
 	var err error
 
-	if p.insecure {
+	if insecureMode || p.insecure {
 		// Insecure mode for development/local testing
 		conn, err = grpc.Dial(
 			nodeAddress,

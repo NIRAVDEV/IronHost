@@ -1,0 +1,49 @@
+Product Specification: IronHost Node Connectivity Patch
+1. Overview
+This specification details the resolution for a connectivity synchronization issue between the Master backend and Agent nodes. Previously, nodes were incorrectly reporting as "Offline" in the UI because the Master service was failing to retrieve stats from the Agent via gRPC. The implemented fix ensures robust, per-node connection handling to support both secure (mTLS) and insecure local testing environments seamlessly.
+
+2. Problem Statement
+The connectivity failure stemmed from a mismatch in how the Master backend handled security protocols during different phases of node interaction:
+
+
+Initial Provisioning: When a node is initially added, the UI utilizes the Probe endpoint, which explicitly forces an insecure connection for local testing purposes.
+
+
+Routine Polling: When the UI periodically polls for live node stats, the Master backend retrieves a connection from a shared ClientPool.
+
+
+The Conflict: This ClientPool was hardcoded to enforce mTLS (secure certificates) by default. It could only be bypassed globally by setting the GRPC_INSECURE=true environment variable on the Master service. Because nodes configured with an insecure http scheme were being forced into secure connections by the Master, the handshakes failed, resulting in the "Offline" UI status.
++1
+
+3. Technical Implementation
+The core fix shifts the ClientPool from a globally rigid security model to a flexible, per-node scheme evaluation.
+
+3.1 gRPC Client Pool (services/master/internal/grpc/client.go)
+
+Signature Modification: The GetClient function signature has been modified to accept an explicit boolean flag: func (p *ClientPool) GetClient(nodeAddress string, insecureMode bool).
+
+
+Connection Logic: Logic was added inside the GetClient method to fallback to an insecure connection if the insecureMode flag is passed as true. This overrides the global GRPC_INSECURE environment variable requirement.
+
+3.2 Node API (services/master/internal/api/nodes.go)
+
+Stats Retrieval: The GetStats function has been updated to evaluate the node's protocol. It now conditionally passes node.Scheme == "http" as the insecureMode argument to GetClient.
+
+
+Result: This explicitly allows nodes registered with an insecure scheme to bypass mTLS requirements during routine polling.
+
+3.3 Server RPC Actions (services/master/internal/api/servers.go)
+
+Command Execution: To ensure consistency across all control panel operations, 9 occurrences of h.grpcPool.GetClient across various Server RPC actions (including Start, Stop, Delete, and SendCommand) were updated. These actions now also dynamically pass node.Scheme == "http" to determine the appropriate connection security.
+
+4. Deployment & Verification Plan
+To apply and verify these changes on the infrastructure, follow this sequence:
+
+
+Rebuild: The Master service has already been successfully compiled using go build ./cmd/master.
+
+
+Restart: Restart the IronHost Master backend service in your terminal to load the newly compiled binary. Upon restarting, the nodes should come online.
+
+
+Verify: Refresh the dashboard UI. The targeted node should automatically update its status to "Online", and real-time statistics should immediately begin populating.

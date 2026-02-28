@@ -1,0 +1,27 @@
+[
+  {
+    "id": "TC001",
+    "title": "post api v1 nodes probe should respect insecure mode for http scheme",
+    "description": "Test the /api/v1/nodes/probe endpoint to verify that it correctly uses insecureMode=true when the node scheme is http, allowing successful probing and stats retrieval without requiring a global insecure flag."
+  },
+  {
+    "id": "TC002",
+    "title": "get api v1 nodes id stats should use per node grpc security selection",
+    "description": "Test the /api/v1/nodes/:id/stats endpoint to ensure that the gRPC client is selected with insecureMode=true for nodes with scheme http and insecureMode=false for nodes with scheme https, and that stats are returned successfully or a 503 error is returned if the agent is unreachable."
+  },
+  {
+    "id": "TC003",
+    "title": "post api v1 servers id start should use per node grpc security selection",
+    "description": "Test the /api/v1/servers/:id/start endpoint to verify that the gRPC client is selected with insecureMode=true for servers on nodes with scheme http, and that the start RPC is executed successfully or returns a 503 error if the agent is unreachable."
+  },
+  {
+    "id": "TC004",
+    "title": "post api v1 servers id stop should use per node grpc security selection",
+    "description": "Test the /api/v1/servers/:id/stop endpoint to ensure that the gRPC client is selected with the correct insecureMode based on the node scheme, and that the stop RPC is executed successfully."
+  },
+  {
+    "id": "TC005",
+    "title": "post api v1 servers id command should use per node grpc security selection",
+    "description": "Test the /api/v1/servers/:id/command endpoint to verify that the gRPC client is selected with the correct insecureMode based on the node scheme, and that the command RPC is executed successfully returning the command output."
+  }
+]
