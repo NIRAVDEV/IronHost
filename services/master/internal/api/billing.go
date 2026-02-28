@@ -321,3 +321,110 @@ func (h *BillingHandler) ListResourceCatalog(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"packages": packages})
 }
+
+// Maintenance cost constants
+const (
+	MaintenanceBaseCost = 50 // IHC per server per month
+
+	// Per-unit monthly maintenance = half the purchase cost
+	// RAM purchase: 70 IHC per 4096 MB → ~17.09 IHC/GB purchase → ~8.5 IHC/GB/month
+	// CPU purchase: 30 IHC per 100% (1 core) → 15 IHC/core/month
+	// Storage purchase: 15 IHC per 5120 MB → ~2.93 IHC/GB purchase → ~1.46 IHC/GB/month
+)
+
+// ServerMaintenanceCost represents the monthly cost breakdown for a server
+type ServerMaintenanceCost struct {
+	ServerID    string `json:"server_id"`
+	ServerName  string `json:"server_name"`
+	BaseCost    int    `json:"base_cost"`
+	RAMCost     int    `json:"ram_cost"`
+	CPUCost     int    `json:"cpu_cost"`
+	StorageCost int    `json:"storage_cost"`
+	TotalCost   int    `json:"total_cost"`
+}
+
+// calculateServerMaintenance returns the monthly IHC cost for a server
+func calculateServerMaintenance(memoryMB int64, cpuPercent int, diskMB int64) ServerMaintenanceCost {
+	cost := ServerMaintenanceCost{
+		BaseCost: MaintenanceBaseCost,
+	}
+
+	// RAM cost: (memory_mb / 1024) * (70 / 4) / 2 = per-GB cost halved
+	// Simplified: purchase is 70 IHC per 4 GB = 17.5 per GB, half = 8.75 per GB
+	// We use integer math: (memory_mb * 70) / (4096 * 2)
+	if memoryMB > 0 {
+		cost.RAMCost = int((memoryMB * 70) / (4096 * 2))
+		if cost.RAMCost < 1 && memoryMB > 0 {
+			cost.RAMCost = 1
+		}
+	}
+
+	// CPU cost: (cpu_percent / 100) * 30 / 2 = 15 per core
+	if cpuPercent > 0 {
+		cost.CPUCost = (cpuPercent * 30) / (100 * 2)
+		if cost.CPUCost < 1 && cpuPercent > 0 {
+			cost.CPUCost = 1
+		}
+	}
+
+	// Storage cost: (disk_mb / 1024) * (15 / 5) / 2 = per-GB cost halved
+	// Simplified: purchase is 15 IHC per 5 GB = 3 per GB, half = 1.5 per GB
+	// Integer math: (disk_mb * 15) / (5120 * 2)
+	if diskMB > 0 {
+		cost.StorageCost = int((diskMB * 15) / (5120 * 2))
+		if cost.StorageCost < 1 && diskMB > 0 {
+			cost.StorageCost = 1
+		}
+	}
+
+	cost.TotalCost = cost.BaseCost + cost.RAMCost + cost.CPUCost + cost.StorageCost
+	return cost
+}
+
+// GetMaintenanceCost returns monthly maintenance cost for all user servers
+func (h *BillingHandler) GetMaintenanceCost(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(uuid.UUID)
+
+	servers, err := h.db.ListServersByUserID(c.Context(), userID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to list servers")
+	}
+
+	costs := make([]ServerMaintenanceCost, 0, len(servers))
+	totalMonthly := 0
+
+	for _, srv := range servers {
+		cost := calculateServerMaintenance(srv.MemoryLimit, srv.CPULimit, srv.DiskLimit)
+		cost.ServerID = srv.ID.String()
+		cost.ServerName = srv.Name
+		costs = append(costs, cost)
+		totalMonthly += cost.TotalCost
+	}
+
+	return c.JSON(fiber.Map{
+		"servers":       costs,
+		"total_monthly": totalMonthly,
+		"server_count":  len(servers),
+	})
+}
+
+// EstimateMaintenanceCost returns cost preview for a server before creating it
+func (h *BillingHandler) EstimateMaintenanceCost(c *fiber.Ctx) error {
+	var req struct {
+		MemoryMB   int64 `json:"memory_limit"`
+		CPUPercent int   `json:"cpu_limit"`
+		DiskMB     int64 `json:"disk_limit"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
+	}
+
+	cost := calculateServerMaintenance(req.MemoryMB, req.CPUPercent, req.DiskMB)
+	return c.JSON(fiber.Map{
+		"base_cost":    cost.BaseCost,
+		"ram_cost":     cost.RAMCost,
+		"cpu_cost":     cost.CPUCost,
+		"storage_cost": cost.StorageCost,
+		"total_cost":   cost.TotalCost,
+	})
+}

@@ -213,15 +213,154 @@ func (h *ServerHandler) createServerOnAgent(server *models.Server, node *databas
 	return nil
 }
 
-// Update updates server settings
+// Update updates server settings (name + resources)
 func (h *ServerHandler) Update(c *fiber.Ctx) error {
-	id, err := uuid.Parse(c.Params("id"))
+	server, err := h.getServerForUser(c)
 	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid server ID")
+		return err
 	}
 
-	_ = id
-	return c.JSON(fiber.Map{"message": "server updated"})
+	userID := c.Locals("userID").(uuid.UUID)
+
+	var req struct {
+		Name        *string `json:"name"`
+		MemoryLimit *int64  `json:"memory_limit"`
+		CPULimit    *int    `json:"cpu_limit"`
+		DiskLimit   *int64  `json:"disk_limit"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
+	}
+
+	// Update name if provided
+	if req.Name != nil && *req.Name != "" {
+		if len(*req.Name) < 2 || len(*req.Name) > 50 {
+			return fiber.NewError(fiber.StatusBadRequest, "name must be between 2 and 50 characters")
+		}
+		if err := h.db.UpdateServerName(c.Context(), server.ID, *req.Name); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to update server name")
+		}
+	}
+
+	// Update resources if any provided
+	newMemory := server.MemoryLimit
+	newCPU := server.CPULimit
+	newDisk := server.DiskLimit
+
+	if req.MemoryLimit != nil {
+		newMemory = *req.MemoryLimit
+	}
+	if req.CPULimit != nil {
+		newCPU = *req.CPULimit
+	}
+	if req.DiskLimit != nil {
+		newDisk = *req.DiskLimit
+	}
+
+	// Validate resource changes against user pool
+	if newMemory != server.MemoryLimit || newCPU != server.CPULimit || newDisk != server.DiskLimit {
+		user, err := h.db.GetUserByID(c.Context(), userID)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to get user")
+		}
+
+		usage, _ := h.db.GetResourceUsage(c.Context(), userID)
+
+		// Available = pool total - used by OTHER servers (exclude current server)
+		freeRAM := int64(user.ResourceRAM) - (int64(usage.RAMUsed) - server.MemoryLimit)
+		freeCPU := user.ResourceCPU - (usage.CPUUsed - server.CPULimit)
+		freeStorage := int64(user.ResourceStorage) - (int64(usage.StorageUsed) - server.DiskLimit)
+
+		if newMemory > freeRAM {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("not enough RAM — %d MB free", freeRAM))
+		}
+		if newCPU > freeCPU {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("not enough CPU — %d%% free", freeCPU))
+		}
+		if newDisk > freeStorage {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("not enough storage — %d MB free", freeStorage))
+		}
+
+		if newMemory < 256 {
+			return fiber.NewError(fiber.StatusBadRequest, "minimum 256 MB RAM required")
+		}
+		if newCPU < 25 {
+			return fiber.NewError(fiber.StatusBadRequest, "minimum 25% CPU required")
+		}
+		if newDisk < 512 {
+			return fiber.NewError(fiber.StatusBadRequest, "minimum 512 MB storage required")
+		}
+
+		if err := h.db.UpdateServerResources(c.Context(), server.ID, newMemory, newCPU, newDisk); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to update server resources")
+		}
+	}
+
+	// Return updated server
+	updated, _ := h.db.GetServer(c.Context(), server.ID)
+	return c.JSON(fiber.Map{"server": updated})
+}
+
+// ResetServer wipes and recreates the server container (data loss)
+func (h *ServerHandler) ResetServer(c *fiber.Ctx) error {
+	server, err := h.getServerForUser(c)
+	if err != nil {
+		return err
+	}
+
+	// Get node info for gRPC connection
+	node, err := h.db.GetNodeByID(c.Context(), server.NodeID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to get node")
+	}
+
+	// Stop the server first if running
+	if server.Status == models.StatusRunning || server.Status == models.StatusStarting {
+		conn, err := h.grpcPool.GetClient(node.GetAddress())
+		if err == nil {
+			client := agentpb.NewAgentServiceClient(conn)
+			ctx := metadata.AppendToOutgoingContext(c.Context(), "authorization", "Bearer "+node.DaemonTokenHash)
+			_, _ = client.StopServer(ctx, &agentpb.StopServerRequest{
+				ServerId:       server.ID.String(),
+				TimeoutSeconds: 10,
+			})
+		}
+	}
+
+	// Delete container on agent
+	conn, err := h.grpcPool.GetClient(node.GetAddress())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "failed to connect to agent")
+	}
+	client := agentpb.NewAgentServiceClient(conn)
+	ctx := metadata.AppendToOutgoingContext(c.Context(), "authorization", "Bearer "+node.DaemonTokenHash)
+
+	_, err = client.DeleteServer(ctx, &agentpb.ServerIdentifier{ServerId: server.ID.String()})
+	if err != nil {
+		log.Printf("Failed to delete container on agent during reset: %v", err)
+	}
+
+	// Update status to installing
+	_ = h.db.UpdateServerStatus(c.Context(), server.ID, models.StatusInstalling)
+
+	// Recreate the server on the agent in background
+	go func() {
+		allocation := server.PrimaryAllocation
+		if allocation == nil {
+			_ = h.db.UpdateServerStatus(context.Background(), server.ID, models.StatusOffline)
+			return
+		}
+
+		err := h.createServerOnAgent(server, node, allocation)
+		if err != nil {
+			log.Printf("Failed to recreate server %s after reset: %v", server.ID, err)
+			_ = h.db.UpdateServerStatus(context.Background(), server.ID, models.StatusOffline)
+		}
+	}()
+
+	return c.JSON(fiber.Map{
+		"message": "Server reset initiated. The container will be recreated.",
+	})
 }
 
 // Delete removes a server (only if the user owns it)

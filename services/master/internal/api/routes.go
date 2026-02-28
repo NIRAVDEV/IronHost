@@ -48,6 +48,8 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 	protected.Post("/billing/coins/purchase", billingHandler.PurchaseCoins)
 	protected.Get("/billing/resources", billingHandler.ListResourceCatalog)
 	protected.Post("/billing/resources/purchase", billingHandler.PurchaseResource)
+	protected.Get("/billing/maintenance", billingHandler.GetMaintenanceCost)
+	protected.Post("/billing/maintenance/estimate", billingHandler.EstimateMaintenanceCost)
 
 	// Node management (admin only)
 	nodes := protected.Group("/nodes")
@@ -74,6 +76,7 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 	servers.Post("/:id/start", serverHandler.Start)
 	servers.Post("/:id/stop", serverHandler.Stop)
 	servers.Post("/:id/restart", serverHandler.Restart)
+	servers.Post("/:id/reset", serverHandler.ResetServer)
 	servers.Post("/:id/command", serverHandler.SendCommand)
 	servers.Get("/:id/logs", serverHandler.GetLogs)
 	servers.Get("/:id/console", serverHandler.StreamConsole) // WebSocket upgrade

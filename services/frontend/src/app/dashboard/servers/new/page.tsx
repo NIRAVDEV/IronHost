@@ -384,6 +384,46 @@ export default function CreateServerPage() {
                     </div>
                 </div>
 
+                {/* Monthly Maintenance Cost Preview */}
+                {(() => {
+                    const baseCost = 50;
+                    const ramCost = memoryLimit > 0 ? Math.max(1, Math.floor((memoryLimit * 70) / (4096 * 2))) : 0;
+                    const cpuCost = cpuLimit > 0 ? Math.max(1, Math.floor((cpuLimit * 30) / (100 * 2))) : 0;
+                    const storageCost = diskLimit > 0 ? Math.max(1, Math.floor((diskLimit * 15) / (5120 * 2))) : 0;
+                    const totalCost = baseCost + ramCost + cpuCost + storageCost;
+
+                    return (
+                        <div className="glass-card rounded-xl p-6 border border-amber-500/30 bg-amber-500/5">
+                            <div className="flex items-center gap-2 mb-3">
+                                <span className="text-lg">💰</span>
+                                <h3 className="text-sm font-semibold text-amber-400">Monthly Maintenance Cost</h3>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                                <div className="rounded-lg bg-background/40 p-2.5 text-center">
+                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Base</p>
+                                    <p className="text-sm font-bold text-foreground">{baseCost} IHC</p>
+                                </div>
+                                <div className="rounded-lg bg-background/40 p-2.5 text-center">
+                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">RAM</p>
+                                    <p className="text-sm font-bold text-foreground">+{ramCost} IHC</p>
+                                </div>
+                                <div className="rounded-lg bg-background/40 p-2.5 text-center">
+                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">CPU</p>
+                                    <p className="text-sm font-bold text-foreground">+{cpuCost} IHC</p>
+                                </div>
+                                <div className="rounded-lg bg-background/40 p-2.5 text-center">
+                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Storage</p>
+                                    <p className="text-sm font-bold text-foreground">+{storageCost} IHC</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between pt-2 border-t border-amber-500/20">
+                                <span className="text-sm text-muted-foreground">Total per month</span>
+                                <span className="text-xl font-bold text-amber-400">{totalCost} IHC</span>
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 {/* Error message */}
                 {error && (
                     <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400">

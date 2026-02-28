@@ -201,3 +201,19 @@ func (db *DB) ListServersByUserID(ctx context.Context, userID uuid.UUID) ([]*mod
 	}
 	return servers, nil
 }
+
+// UpdateServerResources updates the resource limits for a server
+func (db *DB) UpdateServerResources(ctx context.Context, id uuid.UUID, memoryLimit int64, cpuLimit int, diskLimit int64) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE servers SET memory_limit = $2, cpu_limit = $3, disk_limit = $4, updated_at = $5 WHERE id = $1
+	`, id, memoryLimit, cpuLimit, diskLimit, time.Now())
+	return err
+}
+
+// UpdateServerName updates the name of a server
+func (db *DB) UpdateServerName(ctx context.Context, id uuid.UUID, name string) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE servers SET name = $2, updated_at = $3 WHERE id = $1
+	`, id, name, time.Now())
+	return err
+}

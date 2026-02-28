@@ -178,6 +178,21 @@ export const serversApi = {
         const { data } = await api.get<{ logs: string[] }>(`/servers/${id}/logs`);
         return data.logs || [];
     },
+
+    update: async (id: string, updateData: {
+        name?: string;
+        memory_limit?: number;
+        cpu_limit?: number;
+        disk_limit?: number;
+    }) => {
+        const { data } = await api.put<{ server: Server }>(`/servers/${id}`, updateData);
+        return data.server;
+    },
+
+    reset: async (id: string) => {
+        const { data } = await api.post<{ message: string }>(`/servers/${id}/reset`);
+        return data;
+    },
 };
 
 // Nodes API
@@ -303,6 +318,16 @@ export const billingApi = {
 
     purchaseResource: async (packageId: string) => {
         const { data } = await api.post('/billing/resources/purchase', { package_id: packageId });
+        return data;
+    },
+
+    getMaintenanceCost: async () => {
+        const { data } = await api.get<{ servers: { server_id: string; server_name: string; base_cost: number; ram_cost: number; cpu_cost: number; storage_cost: number; total_cost: number }[]; total_monthly: number; server_count: number }>('/billing/maintenance');
+        return data;
+    },
+
+    estimateMaintenanceCost: async (config: { memory_limit: number; cpu_limit: number; disk_limit: number }) => {
+        const { data } = await api.post<{ base_cost: number; ram_cost: number; cpu_cost: number; storage_cost: number; total_cost: number }>('/billing/maintenance/estimate', config);
         return data;
     },
 };
