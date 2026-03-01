@@ -44,84 +44,147 @@ function colorFor(line: string): string {
     if (line.includes('Done (')) return 'text-green-400';
     if (line.includes('Starting minecraft server')) return 'text-blue-400';
     if (line.includes('Stopping') || line.includes('Saving')) return 'text-orange-400';
+    if (line.startsWith('Error:')) return 'text-red-400';
     // Command responses (no bracket prefix, not a user command)
     if (!line.startsWith('[') && !line.startsWith('>') && line.length > 0) return 'text-purple-400';
     return 'text-gray-300';
 }
 
+/** Build a WebSocket URL from the API base URL */
+function getWebSocketUrl(serverId: string): string {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+    // Convert http(s) → ws(s)
+    const wsBase = apiBase.replace(/^http/, 'ws');
+    return `${wsBase}/servers/${serverId}/console`;
+}
+
+type WsStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+
 export default function ConsolePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const [server, setServer] = useState<Server | null>(null);
-
-    // Two separate arrays: Docker logs (replaced each poll) + local lines (persist)
-    const [dockerLogs, setDockerLogs] = useState<string[]>([]);
-    const [localLines, setLocalLines] = useState<string[]>([]);
-    const [cleared, setCleared] = useState(false);
-
+    const [lines, setLines] = useState<string[]>([]);
     const [command, setCommand] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const [wsStatus, setWsStatus] = useState<WsStatus>('connecting');
+    const [serverStatus, setServerStatus] = useState<string>('');
+
     const terminalRef = useRef<HTMLDivElement>(null);
     const autoScroll = useRef(true);
+    const wsRef = useRef<WebSocket | null>(null);
+    const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Combined display: docker logs + local lines
-    const displayLines = cleared ? localLines : [...dockerLogs, ...localLines];
-
-    // ── Server info polling ──
+    // ── Fetch server info once for header ──
     useEffect(() => {
         const load = async () => {
-            try { setServer(await serversApi.get(id)); } catch { /* */ }
+            try {
+                const s = await serversApi.get(id);
+                setServer(s);
+                setServerStatus(s.status);
+            } catch { /* */ }
         };
         load();
-        const i = setInterval(load, 5000);
-        return () => clearInterval(i);
     }, [id]);
 
-    // ── Log polling: always get the full snapshot, replace docker logs ──
-    const fetchLogs = useCallback(async () => {
-        try {
-            const raw: string[] = await serversApi.getLogs(id);
-            if (!raw || raw.length === 0) {
-                if (!cleared) setDockerLogs([]);
-                return;
-            }
-
-            // Filter + clean
-            const filtered = raw
-                .filter(line => !isNoisy(line))
-                .map(clean)
-                .filter(l => l.trim().length > 0);
-
-            // If cleared, only show NEW lines that weren't in the pre-clear snapshot
-            // We detect "new content" by checking if Docker log count changed significantly
-            setDockerLogs(prev => {
-                if (cleared) {
-                    // Only show if there are new lines beyond what was cleared
-                    if (filtered.length > prev.length + localLines.length) {
-                        // New content after clear — show only the delta
-                        setCleared(false);
-                        return filtered;
-                    }
-                    return prev; // Keep empty during cleared state
-                }
-                return filtered;
-            });
-        } catch {
-            // Server might not be running
+    // ── WebSocket connection ──
+    const connectWs = useCallback(async () => {
+        // Clean up any previous connection
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
         }
-    }, [id, cleared, localLines.length]);
+
+        setWsStatus('connecting');
+
+        // Get auth token for the WebSocket connection
+        let token = '';
+        try {
+            const { createClient } = await import('@/lib/supabase');
+            const supabase = createClient();
+            const { data } = await supabase.auth.getSession();
+            token = data.session?.access_token || '';
+        } catch { /* */ }
+
+        const url = getWebSocketUrl(id) + (token ? `?token=${encodeURIComponent(token)}` : '');
+        const ws = new WebSocket(url);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+            setWsStatus('connected');
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+
+                switch (msg.type) {
+                    case 'log': {
+                        // Real-time log line from the Agent's Docker stream
+                        const rawLine = msg.line || '';
+                        // The Agent may send multi-line chunks
+                        const subLines = rawLine.split('\n');
+                        const cleaned = subLines
+                            .filter((l: string) => !isNoisy(l))
+                            .map(clean)
+                            .filter((l: string) => l.trim().length > 0);
+                        if (cleaned.length > 0) {
+                            setLines(prev => [...prev, ...cleaned]);
+                        }
+                        break;
+                    }
+                    case 'status':
+                        setServerStatus(msg.status);
+                        break;
+                    case 'command_result': {
+                        // Output from a command we sent
+                        const output = (msg.output || '').trim().replace(/[\x00-\x08]/g, '');
+                        if (output) {
+                            setLines(prev => [...prev, output]);
+                        }
+                        setIsSending(false);
+                        break;
+                    }
+                    case 'error':
+                        setLines(prev => [...prev, `§c ${msg.message}`]);
+                        break;
+                }
+            } catch {
+                // Non-JSON message, just append it
+                setLines(prev => [...prev, event.data]);
+            }
+        };
+
+        ws.onerror = () => {
+            setWsStatus('error');
+        };
+
+        ws.onclose = () => {
+            setWsStatus('disconnected');
+            wsRef.current = null;
+            // Auto-reconnect after 3 seconds
+            reconnectTimer.current = setTimeout(() => {
+                connectWs();
+            }, 3000);
+        };
+    }, [id]);
 
     useEffect(() => {
-        fetchLogs();
-        const i = setInterval(fetchLogs, 3000);
-        return () => clearInterval(i);
-    }, [fetchLogs]);
+        connectWs();
+        return () => {
+            if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+        };
+    }, [connectWs]);
 
     // ── Auto-scroll ──
     useEffect(() => {
         if (autoScroll.current && terminalRef.current) {
             terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
         }
-    }, [displayLines.length]);
+    }, [lines.length]);
 
     const handleScroll = () => {
         if (!terminalRef.current) return;
@@ -131,12 +194,10 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
 
     // ── Clear console ──
     const clearConsole = () => {
-        setDockerLogs([]);
-        setLocalLines([]);
-        setCleared(true);
+        setLines([]);
     };
 
-    // ── Send command ──
+    // ── Send command via WebSocket ──
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!command.trim() || isSending) return;
@@ -146,21 +207,37 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
         setIsSending(true);
         autoScroll.current = true;
 
-        // Add command to local lines (persists across polls)
-        setLocalLines(prev => [...prev, `> ${cmd}`]);
+        // Show the command locally immediately
+        setLines(prev => [...prev, `> ${cmd}`]);
 
-        try {
-            const result = await serversApi.sendCommand(id, cmd);
-            if (result.output?.trim()) {
-                const cleaned = result.output.trim().replace(/[\x00-\x08]/g, '');
-                setLocalLines(prev => [...prev, cleaned]);
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'command', command: cmd }));
+        } else {
+            // Fallback: use REST API if WebSocket isn't connected
+            try {
+                const result = await serversApi.sendCommand(id, cmd);
+                if (result.output?.trim()) {
+                    const cleaned = result.output.trim().replace(/[\x00-\x08]/g, '');
+                    setLines(prev => [...prev, cleaned]);
+                }
+            } catch {
+                setLines(prev => [...prev, '§c Failed to send command']);
             }
-        } catch {
-            setLocalLines(prev => [...prev, '§c Failed to send command']);
-        } finally {
             setIsSending(false);
         }
     };
+
+    const statusIndicator = wsStatus === 'connected'
+        ? 'status-running'
+        : wsStatus === 'connecting'
+            ? 'status-starting'
+            : 'status-stopped';
+
+    const statusLabel = wsStatus === 'connected'
+        ? (serverStatus === 'running' ? 'Live' : serverStatus || 'Connected')
+        : wsStatus === 'connecting'
+            ? 'Connecting...'
+            : 'Disconnected';
 
     return (
         <div className="space-y-4 animate-fade-in h-[calc(100vh-8rem)]">
@@ -192,9 +269,9 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                         Clear
                     </button>
                     <div className="flex items-center gap-2">
-                        <span className={`status-dot ${server?.status === 'running' ? 'status-running' : 'status-stopped'}`} />
+                        <span className={`status-dot ${statusIndicator}`} />
                         <span className="text-sm text-muted-foreground">
-                            {server?.status === 'running' ? 'Connected' : server?.status || 'Connecting...'}
+                            {statusLabel}
                         </span>
                     </div>
                 </div>
@@ -207,14 +284,16 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                     onScroll={handleScroll}
                     className="flex-1 p-4 overflow-y-auto font-mono text-sm bg-black/50"
                 >
-                    {displayLines.length === 0 ? (
+                    {lines.length === 0 ? (
                         <div className="text-muted-foreground">
-                            {server?.status === 'running'
-                                ? 'Loading console output...'
-                                : 'Server is not running. Start it to see console output.'}
+                            {wsStatus === 'connected'
+                                ? (serverStatus === 'running'
+                                    ? 'Waiting for console output...'
+                                    : 'Server is not running. Start it to see console output.')
+                                : 'Connecting to server...'}
                         </div>
                     ) : (
-                        displayLines.map((line, i) => (
+                        lines.map((line, i) => (
                             <div key={i} className={`leading-relaxed whitespace-pre-wrap break-all ${colorFor(line)}`}>
                                 {line}
                             </div>
@@ -230,13 +309,13 @@ export default function ConsolePage({ params }: { params: Promise<{ id: string }
                             type="text"
                             value={command}
                             onChange={e => setCommand(e.target.value)}
-                            placeholder={server?.status === 'running' ? 'Enter command...' : 'Server is not running'}
-                            disabled={server?.status !== 'running' || isSending}
+                            placeholder={serverStatus === 'running' ? 'Enter command...' : 'Server is not running'}
+                            disabled={serverStatus !== 'running' || isSending}
                             className="flex-1 bg-transparent text-foreground font-mono text-sm placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                         />
                         <button
                             type="submit"
-                            disabled={server?.status !== 'running' || isSending}
+                            disabled={serverStatus !== 'running' || isSending}
                             className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 transition-colors disabled:opacity-50"
                         >
                             {isSending ? 'Sending...' : 'Send'}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/metadata"
@@ -586,7 +587,140 @@ func (h *ServerHandler) GetLogs(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"logs": lines})
 }
 
-// StreamConsole upgrades to WebSocket for console streaming
-func (h *ServerHandler) StreamConsole(c *fiber.Ctx) error {
-	return fiber.NewError(fiber.StatusNotImplemented, "console streaming not yet implemented")
+// StreamConsole is the WebSocket handler for real-time console streaming.
+// It bridges the Agent's gRPC StreamConsole to the frontend via WebSocket.
+// It also accepts incoming "command" messages and forwards them via SendCommand RPC.
+func (h *ServerHandler) StreamConsoleWS(c *websocket.Conn) {
+	serverIDStr := c.Params("id")
+	userIDStr := c.Locals("userID")
+	if userIDStr == nil {
+		log.Println("WebSocket: no userID in context")
+		c.WriteJSON(fiber.Map{"type": "error", "message": "unauthorized"})
+		return
+	}
+	userID, ok := userIDStr.(uuid.UUID)
+	if !ok {
+		log.Println("WebSocket: invalid userID type")
+		c.WriteJSON(fiber.Map{"type": "error", "message": "unauthorized"})
+		return
+	}
+
+	serverID, err := uuid.Parse(serverIDStr)
+	if err != nil {
+		c.WriteJSON(fiber.Map{"type": "error", "message": "invalid server ID"})
+		return
+	}
+
+	// Verify ownership
+	server, err := h.db.GetServer(context.Background(), serverID)
+	if err != nil || server.UserID != userID {
+		c.WriteJSON(fiber.Map{"type": "error", "message": "server not found"})
+		return
+	}
+
+	node, err := h.db.GetNodeByID(context.Background(), server.NodeID)
+	if err != nil {
+		c.WriteJSON(fiber.Map{"type": "error", "message": "node not found"})
+		return
+	}
+
+	conn, err := h.grpcPool.GetClient(node.GetAddress(), node.Scheme == "http")
+	if err != nil {
+		c.WriteJSON(fiber.Map{"type": "error", "message": "failed to connect to agent"})
+		return
+	}
+
+	client := agentpb.NewAgentServiceClient(conn)
+	grpcCtx, grpcCancel := context.WithCancel(context.Background())
+	grpcCtx = metadata.AppendToOutgoingContext(grpcCtx, "authorization", "Bearer "+node.DaemonTokenHash)
+	defer grpcCancel()
+
+	// Send initial status
+	c.WriteJSON(fiber.Map{"type": "status", "status": server.Status})
+
+	// --- goroutine 1: stream gRPC console logs → WebSocket ---
+	go func() {
+		defer grpcCancel()
+
+		stream, err := client.StreamConsole(grpcCtx, &agentpb.ServerIdentifier{ServerId: server.ID.String()})
+		if err != nil {
+			log.Printf("WebSocket: StreamConsole RPC failed: %v", err)
+			c.WriteJSON(fiber.Map{"type": "error", "message": "failed to start console stream: " + err.Error()})
+			return
+		}
+
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				if grpcCtx.Err() != nil {
+					return // context cancelled, clean shutdown
+				}
+				log.Printf("WebSocket: StreamConsole recv error: %v", err)
+				return
+			}
+			if err := c.WriteJSON(fiber.Map{
+				"type":      "log",
+				"line":      msg.Line,
+				"timestamp": msg.Timestamp,
+			}); err != nil {
+				return // WebSocket closed
+			}
+		}
+	}()
+
+	// --- goroutine 2: poll server status every 3s → WebSocket ---
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		lastStatus := server.Status
+
+		for {
+			select {
+			case <-grpcCtx.Done():
+				return
+			case <-ticker.C:
+				srv, err := h.db.GetServer(context.Background(), serverID)
+				if err != nil {
+					continue
+				}
+				if srv.Status != lastStatus {
+					lastStatus = srv.Status
+					if err := c.WriteJSON(fiber.Map{"type": "status", "status": lastStatus}); err != nil {
+						return
+					}
+				}
+			}
+		}
+	}()
+
+	// --- main loop: read WebSocket messages (commands from user) ---
+	for {
+		var msg struct {
+			Type    string `json:"type"`
+			Command string `json:"command"`
+		}
+		if err := c.ReadJSON(&msg); err != nil {
+			// WebSocket closed or read error
+			break
+		}
+
+		if msg.Type == "command" && msg.Command != "" {
+			// Send command via gRPC
+			resp, err := client.SendCommand(grpcCtx, &agentpb.SendCommandRequest{
+				ServerId: server.ID.String(),
+				Command:  msg.Command,
+			})
+			output := ""
+			if err != nil {
+				output = "Error: " + err.Error()
+			} else if resp != nil {
+				output = resp.ErrorMessage
+			}
+			c.WriteJSON(fiber.Map{
+				"type":    "command_result",
+				"command": msg.Command,
+				"output":  output,
+			})
+		}
+	}
 }

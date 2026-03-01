@@ -305,16 +305,19 @@ func generateToken(userID uuid.UUID) (string, error) {
 func JWTMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
-		if authHeader == "" {
-			return fiber.NewError(fiber.StatusUnauthorized, "missing authorization header")
+		tokenString := ""
+
+		if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+			tokenString = authHeader[7:]
 		}
 
-		// Extract token (Bearer <token>)
-		tokenString := ""
-		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-			tokenString = authHeader[7:]
-		} else {
-			return fiber.NewError(fiber.StatusUnauthorized, "invalid authorization format")
+		// Fallback: check query param "token" (used by WebSocket connections)
+		if tokenString == "" {
+			tokenString = c.Query("token")
+		}
+
+		if tokenString == "" {
+			return fiber.NewError(fiber.StatusUnauthorized, "missing authorization")
 		}
 
 		// Parse and validate token using JWKS keyfunc (supports ES256 + HS256)

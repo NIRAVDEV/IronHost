@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/ironhost/master/internal/database"
@@ -79,7 +80,15 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 	servers.Post("/:id/reset", serverHandler.ResetServer)
 	servers.Post("/:id/command", serverHandler.SendCommand)
 	servers.Get("/:id/logs", serverHandler.GetLogs)
-	servers.Get("/:id/console", serverHandler.StreamConsole) // WebSocket upgrade
+
+	// WebSocket console streaming – upgrade middleware + handler
+	servers.Use("/:id/console", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+	servers.Get("/:id/console", websocket.New(serverHandler.StreamConsoleWS))
 
 	// Allocations (admin only)
 	allocations := protected.Group("/allocations")
