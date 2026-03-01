@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -319,6 +320,19 @@ func (s *AgentService) StreamConsole(req *agentpb.ServerIdentifier, stream agent
 // SendCommand sends a command to the server console
 func (s *AgentService) SendCommand(ctx context.Context, req *agentpb.SendCommandRequest) (*agentpb.ServerActionResponse, error) {
 	fmt.Printf("💬 Received SendCommand for %s: %s\n", req.ServerId, req.Command)
+
+	// ── File management commands (prefix: __file:operation:body) ──
+	if strings.HasPrefix(req.Command, "__file:") {
+		parts := strings.SplitN(req.Command[7:], ":", 2)
+		operation := parts[0]
+		body := ""
+		if len(parts) > 1 {
+			body = parts[1]
+		}
+		result := s.HandleFileCommand(req.ServerId, operation, body)
+		return &agentpb.ServerActionResponse{Success: true, ErrorMessage: result}, nil
+	}
+
 	containerID, err := s.getContainerID(req.ServerId)
 	if err != nil {
 		fmt.Printf("❌ SendCommand: container not found: %v\n", err)

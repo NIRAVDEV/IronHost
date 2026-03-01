@@ -608,6 +608,470 @@ func (x *PingResponse) GetTimestamp() int64 {
 	return 0
 }
 
+type FileInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"` // relative path within the server directory
+	IsDirectory   bool                   `protobuf:"varint,3,opt,name=is_directory,json=isDirectory,proto3" json:"is_directory,omitempty"`
+	Size          int64                  `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`                               // file size in bytes
+	ModifiedAt    int64                  `protobuf:"varint,5,opt,name=modified_at,json=modifiedAt,proto3" json:"modified_at,omitempty"` // unix timestamp
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FileInfo) Reset() {
+	*x = FileInfo{}
+	mi := &file_ironhost_v1_agent_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileInfo) ProtoMessage() {}
+
+func (x *FileInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_ironhost_v1_agent_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileInfo.ProtoReflect.Descriptor instead.
+func (*FileInfo) Descriptor() ([]byte, []int) {
+	return file_ironhost_v1_agent_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *FileInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *FileInfo) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *FileInfo) GetIsDirectory() bool {
+	if x != nil {
+		return x.IsDirectory
+	}
+	return false
+}
+
+func (x *FileInfo) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *FileInfo) GetModifiedAt() int64 {
+	if x != nil {
+		return x.ModifiedAt
+	}
+	return 0
+}
+
+type ListFilesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"` // relative directory path (empty = root)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListFilesRequest) Reset() {
+	*x = ListFilesRequest{}
+	mi := &file_ironhost_v1_agent_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListFilesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListFilesRequest) ProtoMessage() {}
+
+func (x *ListFilesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ironhost_v1_agent_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListFilesRequest.ProtoReflect.Descriptor instead.
+func (*ListFilesRequest) Descriptor() ([]byte, []int) {
+	return file_ironhost_v1_agent_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ListFilesRequest) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *ListFilesRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type ListFilesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Files         []*FileInfo            `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
+	CurrentPath   string                 `protobuf:"bytes,2,opt,name=current_path,json=currentPath,proto3" json:"current_path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListFilesResponse) Reset() {
+	*x = ListFilesResponse{}
+	mi := &file_ironhost_v1_agent_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListFilesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListFilesResponse) ProtoMessage() {}
+
+func (x *ListFilesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ironhost_v1_agent_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListFilesResponse.ProtoReflect.Descriptor instead.
+func (*ListFilesResponse) Descriptor() ([]byte, []int) {
+	return file_ironhost_v1_agent_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListFilesResponse) GetFiles() []*FileInfo {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
+func (x *ListFilesResponse) GetCurrentPath() string {
+	if x != nil {
+		return x.CurrentPath
+	}
+	return ""
+}
+
+type ReadFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"` // relative file path
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadFileRequest) Reset() {
+	*x = ReadFileRequest{}
+	mi := &file_ironhost_v1_agent_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadFileRequest) ProtoMessage() {}
+
+func (x *ReadFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ironhost_v1_agent_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadFileRequest.ProtoReflect.Descriptor instead.
+func (*ReadFileRequest) Descriptor() ([]byte, []int) {
+	return file_ironhost_v1_agent_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ReadFileRequest) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *ReadFileRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type ReadFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Size          int64                  `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadFileResponse) Reset() {
+	*x = ReadFileResponse{}
+	mi := &file_ironhost_v1_agent_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadFileResponse) ProtoMessage() {}
+
+func (x *ReadFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ironhost_v1_agent_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadFileResponse.ProtoReflect.Descriptor instead.
+func (*ReadFileResponse) Descriptor() ([]byte, []int) {
+	return file_ironhost_v1_agent_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ReadFileResponse) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *ReadFileResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ReadFileResponse) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+type WriteFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Content       string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WriteFileRequest) Reset() {
+	*x = WriteFileRequest{}
+	mi := &file_ironhost_v1_agent_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WriteFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WriteFileRequest) ProtoMessage() {}
+
+func (x *WriteFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ironhost_v1_agent_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WriteFileRequest.ProtoReflect.Descriptor instead.
+func (*WriteFileRequest) Descriptor() ([]byte, []int) {
+	return file_ironhost_v1_agent_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *WriteFileRequest) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *WriteFileRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *WriteFileRequest) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+type DeleteFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteFileRequest) Reset() {
+	*x = DeleteFileRequest{}
+	mi := &file_ironhost_v1_agent_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteFileRequest) ProtoMessage() {}
+
+func (x *DeleteFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ironhost_v1_agent_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteFileRequest.ProtoReflect.Descriptor instead.
+func (*DeleteFileRequest) Descriptor() ([]byte, []int) {
+	return file_ironhost_v1_agent_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *DeleteFileRequest) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *DeleteFileRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type RenameFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	OldPath       string                 `protobuf:"bytes,2,opt,name=old_path,json=oldPath,proto3" json:"old_path,omitempty"`
+	NewPath       string                 `protobuf:"bytes,3,opt,name=new_path,json=newPath,proto3" json:"new_path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenameFileRequest) Reset() {
+	*x = RenameFileRequest{}
+	mi := &file_ironhost_v1_agent_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenameFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenameFileRequest) ProtoMessage() {}
+
+func (x *RenameFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ironhost_v1_agent_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenameFileRequest.ProtoReflect.Descriptor instead.
+func (*RenameFileRequest) Descriptor() ([]byte, []int) {
+	return file_ironhost_v1_agent_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *RenameFileRequest) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *RenameFileRequest) GetOldPath() string {
+	if x != nil {
+		return x.OldPath
+	}
+	return ""
+}
+
+func (x *RenameFileRequest) GetNewPath() string {
+	if x != nil {
+		return x.NewPath
+	}
+	return ""
+}
+
 var File_ironhost_v1_agent_proto protoreflect.FileDescriptor
 
 const file_ironhost_v1_agent_proto_rawDesc = "" +
@@ -653,7 +1117,39 @@ const file_ironhost_v1_agent_proto_rawDesc = "" +
 	"\fPingResponse\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x1c\n" +
-	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp2\xd0\x06\n" +
+	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\"\x8a\x01\n" +
+	"\bFileInfo\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12!\n" +
+	"\fis_directory\x18\x03 \x01(\bR\visDirectory\x12\x12\n" +
+	"\x04size\x18\x04 \x01(\x03R\x04size\x12\x1f\n" +
+	"\vmodified_at\x18\x05 \x01(\x03R\n" +
+	"modifiedAt\"C\n" +
+	"\x10ListFilesRequest\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"c\n" +
+	"\x11ListFilesResponse\x12+\n" +
+	"\x05files\x18\x01 \x03(\v2\x15.ironhost.v1.FileInfoR\x05files\x12!\n" +
+	"\fcurrent_path\x18\x02 \x01(\tR\vcurrentPath\"B\n" +
+	"\x0fReadFileRequest\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"T\n" +
+	"\x10ReadFileResponse\x12\x18\n" +
+	"\acontent\x18\x01 \x01(\tR\acontent\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04size\x18\x03 \x01(\x03R\x04size\"]\n" +
+	"\x10WriteFileRequest\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x18\n" +
+	"\acontent\x18\x03 \x01(\tR\acontent\"D\n" +
+	"\x11DeleteFileRequest\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"f\n" +
+	"\x11RenameFileRequest\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x19\n" +
+	"\bold_path\x18\x02 \x01(\tR\aoldPath\x12\x19\n" +
+	"\bnew_path\x18\x03 \x01(\tR\anewPath2\xae\n" +
+	"\n" +
 	"\fAgentService\x12S\n" +
 	"\fCreateServer\x12 .ironhost.v1.CreateServerRequest\x1a!.ironhost.v1.CreateServerResponse\x12O\n" +
 	"\vStartServer\x12\x1d.ironhost.v1.ServerIdentifier\x1a!.ironhost.v1.ServerActionResponse\x12O\n" +
@@ -663,8 +1159,16 @@ const file_ironhost_v1_agent_proto_rawDesc = "" +
 	"\fDeleteServer\x12\x1d.ironhost.v1.ServerIdentifier\x1a!.ironhost.v1.ServerActionResponse\x12J\n" +
 	"\x0fGetServerStatus\x12\x1d.ironhost.v1.ServerIdentifier\x1a\x18.ironhost.v1.ServerState\x12G\n" +
 	"\vListServers\x12\x16.google.protobuf.Empty\x1a .ironhost.v1.ListServersResponse\x12L\n" +
-	"\rStreamConsole\x12\x1d.ironhost.v1.ServerIdentifier\x1a\x1a.ironhost.v1.ConsoleOutput0\x01\x12F\n" +
-	"\vSendCommand\x12\x1f.ironhost.v1.SendCommandRequest\x1a\x16.google.protobuf.Empty\x12>\n" +
+	"\rStreamConsole\x12\x1d.ironhost.v1.ServerIdentifier\x1a\x1a.ironhost.v1.ConsoleOutput0\x01\x12Q\n" +
+	"\vSendCommand\x12\x1f.ironhost.v1.SendCommandRequest\x1a!.ironhost.v1.ServerActionResponse\x12K\n" +
+	"\aGetLogs\x12\x1d.ironhost.v1.ServerIdentifier\x1a!.ironhost.v1.ServerActionResponse\x12J\n" +
+	"\tListFiles\x12\x1d.ironhost.v1.ListFilesRequest\x1a\x1e.ironhost.v1.ListFilesResponse\x12G\n" +
+	"\bReadFile\x12\x1c.ironhost.v1.ReadFileRequest\x1a\x1d.ironhost.v1.ReadFileResponse\x12M\n" +
+	"\tWriteFile\x12\x1d.ironhost.v1.WriteFileRequest\x1a!.ironhost.v1.ServerActionResponse\x12O\n" +
+	"\n" +
+	"DeleteFile\x12\x1e.ironhost.v1.DeleteFileRequest\x1a!.ironhost.v1.ServerActionResponse\x12O\n" +
+	"\n" +
+	"RenameFile\x12\x1e.ironhost.v1.RenameFileRequest\x1a!.ironhost.v1.ServerActionResponse\x12>\n" +
 	"\fGetNodeStats\x12\x16.google.protobuf.Empty\x1a\x16.ironhost.v1.NodeStats\x129\n" +
 	"\x04Ping\x12\x16.google.protobuf.Empty\x1a\x19.ironhost.v1.PingResponseB'Z%github.com/ironhost/proto/ironhost/v1b\x06proto3"
 
@@ -680,7 +1184,7 @@ func file_ironhost_v1_agent_proto_rawDescGZIP() []byte {
 	return file_ironhost_v1_agent_proto_rawDescData
 }
 
-var file_ironhost_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_ironhost_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_ironhost_v1_agent_proto_goTypes = []any{
 	(*CreateServerRequest)(nil),  // 0: ironhost.v1.CreateServerRequest
 	(*CreateServerResponse)(nil), // 1: ironhost.v1.CreateServerResponse
@@ -691,45 +1195,66 @@ var file_ironhost_v1_agent_proto_goTypes = []any{
 	(*SendCommandRequest)(nil),   // 6: ironhost.v1.SendCommandRequest
 	(*NodeStats)(nil),            // 7: ironhost.v1.NodeStats
 	(*PingResponse)(nil),         // 8: ironhost.v1.PingResponse
-	(*ResourceLimits)(nil),       // 9: ironhost.v1.ResourceLimits
-	(*Allocation)(nil),           // 10: ironhost.v1.Allocation
-	(*EnvVar)(nil),               // 11: ironhost.v1.EnvVar
-	(*ServerState)(nil),          // 12: ironhost.v1.ServerState
-	(*ServerIdentifier)(nil),     // 13: ironhost.v1.ServerIdentifier
-	(*emptypb.Empty)(nil),        // 14: google.protobuf.Empty
+	(*FileInfo)(nil),             // 9: ironhost.v1.FileInfo
+	(*ListFilesRequest)(nil),     // 10: ironhost.v1.ListFilesRequest
+	(*ListFilesResponse)(nil),    // 11: ironhost.v1.ListFilesResponse
+	(*ReadFileRequest)(nil),      // 12: ironhost.v1.ReadFileRequest
+	(*ReadFileResponse)(nil),     // 13: ironhost.v1.ReadFileResponse
+	(*WriteFileRequest)(nil),     // 14: ironhost.v1.WriteFileRequest
+	(*DeleteFileRequest)(nil),    // 15: ironhost.v1.DeleteFileRequest
+	(*RenameFileRequest)(nil),    // 16: ironhost.v1.RenameFileRequest
+	(*ResourceLimits)(nil),       // 17: ironhost.v1.ResourceLimits
+	(*Allocation)(nil),           // 18: ironhost.v1.Allocation
+	(*EnvVar)(nil),               // 19: ironhost.v1.EnvVar
+	(*ServerState)(nil),          // 20: ironhost.v1.ServerState
+	(*ServerIdentifier)(nil),     // 21: ironhost.v1.ServerIdentifier
+	(*emptypb.Empty)(nil),        // 22: google.protobuf.Empty
 }
 var file_ironhost_v1_agent_proto_depIdxs = []int32{
-	9,  // 0: ironhost.v1.CreateServerRequest.limits:type_name -> ironhost.v1.ResourceLimits
-	10, // 1: ironhost.v1.CreateServerRequest.allocations:type_name -> ironhost.v1.Allocation
-	11, // 2: ironhost.v1.CreateServerRequest.environment:type_name -> ironhost.v1.EnvVar
-	12, // 3: ironhost.v1.ListServersResponse.servers:type_name -> ironhost.v1.ServerState
-	0,  // 4: ironhost.v1.AgentService.CreateServer:input_type -> ironhost.v1.CreateServerRequest
-	13, // 5: ironhost.v1.AgentService.StartServer:input_type -> ironhost.v1.ServerIdentifier
-	2,  // 6: ironhost.v1.AgentService.StopServer:input_type -> ironhost.v1.StopServerRequest
-	13, // 7: ironhost.v1.AgentService.RestartServer:input_type -> ironhost.v1.ServerIdentifier
-	13, // 8: ironhost.v1.AgentService.DeleteServer:input_type -> ironhost.v1.ServerIdentifier
-	13, // 9: ironhost.v1.AgentService.GetServerStatus:input_type -> ironhost.v1.ServerIdentifier
-	14, // 10: ironhost.v1.AgentService.ListServers:input_type -> google.protobuf.Empty
-	13, // 11: ironhost.v1.AgentService.StreamConsole:input_type -> ironhost.v1.ServerIdentifier
-	6,  // 12: ironhost.v1.AgentService.SendCommand:input_type -> ironhost.v1.SendCommandRequest
-	14, // 13: ironhost.v1.AgentService.GetNodeStats:input_type -> google.protobuf.Empty
-	14, // 14: ironhost.v1.AgentService.Ping:input_type -> google.protobuf.Empty
-	1,  // 15: ironhost.v1.AgentService.CreateServer:output_type -> ironhost.v1.CreateServerResponse
-	3,  // 16: ironhost.v1.AgentService.StartServer:output_type -> ironhost.v1.ServerActionResponse
-	3,  // 17: ironhost.v1.AgentService.StopServer:output_type -> ironhost.v1.ServerActionResponse
-	3,  // 18: ironhost.v1.AgentService.RestartServer:output_type -> ironhost.v1.ServerActionResponse
-	3,  // 19: ironhost.v1.AgentService.DeleteServer:output_type -> ironhost.v1.ServerActionResponse
-	12, // 20: ironhost.v1.AgentService.GetServerStatus:output_type -> ironhost.v1.ServerState
-	4,  // 21: ironhost.v1.AgentService.ListServers:output_type -> ironhost.v1.ListServersResponse
-	5,  // 22: ironhost.v1.AgentService.StreamConsole:output_type -> ironhost.v1.ConsoleOutput
-	14, // 23: ironhost.v1.AgentService.SendCommand:output_type -> google.protobuf.Empty
-	7,  // 24: ironhost.v1.AgentService.GetNodeStats:output_type -> ironhost.v1.NodeStats
-	8,  // 25: ironhost.v1.AgentService.Ping:output_type -> ironhost.v1.PingResponse
-	15, // [15:26] is the sub-list for method output_type
-	4,  // [4:15] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	17, // 0: ironhost.v1.CreateServerRequest.limits:type_name -> ironhost.v1.ResourceLimits
+	18, // 1: ironhost.v1.CreateServerRequest.allocations:type_name -> ironhost.v1.Allocation
+	19, // 2: ironhost.v1.CreateServerRequest.environment:type_name -> ironhost.v1.EnvVar
+	20, // 3: ironhost.v1.ListServersResponse.servers:type_name -> ironhost.v1.ServerState
+	9,  // 4: ironhost.v1.ListFilesResponse.files:type_name -> ironhost.v1.FileInfo
+	0,  // 5: ironhost.v1.AgentService.CreateServer:input_type -> ironhost.v1.CreateServerRequest
+	21, // 6: ironhost.v1.AgentService.StartServer:input_type -> ironhost.v1.ServerIdentifier
+	2,  // 7: ironhost.v1.AgentService.StopServer:input_type -> ironhost.v1.StopServerRequest
+	21, // 8: ironhost.v1.AgentService.RestartServer:input_type -> ironhost.v1.ServerIdentifier
+	21, // 9: ironhost.v1.AgentService.DeleteServer:input_type -> ironhost.v1.ServerIdentifier
+	21, // 10: ironhost.v1.AgentService.GetServerStatus:input_type -> ironhost.v1.ServerIdentifier
+	22, // 11: ironhost.v1.AgentService.ListServers:input_type -> google.protobuf.Empty
+	21, // 12: ironhost.v1.AgentService.StreamConsole:input_type -> ironhost.v1.ServerIdentifier
+	6,  // 13: ironhost.v1.AgentService.SendCommand:input_type -> ironhost.v1.SendCommandRequest
+	21, // 14: ironhost.v1.AgentService.GetLogs:input_type -> ironhost.v1.ServerIdentifier
+	10, // 15: ironhost.v1.AgentService.ListFiles:input_type -> ironhost.v1.ListFilesRequest
+	12, // 16: ironhost.v1.AgentService.ReadFile:input_type -> ironhost.v1.ReadFileRequest
+	14, // 17: ironhost.v1.AgentService.WriteFile:input_type -> ironhost.v1.WriteFileRequest
+	15, // 18: ironhost.v1.AgentService.DeleteFile:input_type -> ironhost.v1.DeleteFileRequest
+	16, // 19: ironhost.v1.AgentService.RenameFile:input_type -> ironhost.v1.RenameFileRequest
+	22, // 20: ironhost.v1.AgentService.GetNodeStats:input_type -> google.protobuf.Empty
+	22, // 21: ironhost.v1.AgentService.Ping:input_type -> google.protobuf.Empty
+	1,  // 22: ironhost.v1.AgentService.CreateServer:output_type -> ironhost.v1.CreateServerResponse
+	3,  // 23: ironhost.v1.AgentService.StartServer:output_type -> ironhost.v1.ServerActionResponse
+	3,  // 24: ironhost.v1.AgentService.StopServer:output_type -> ironhost.v1.ServerActionResponse
+	3,  // 25: ironhost.v1.AgentService.RestartServer:output_type -> ironhost.v1.ServerActionResponse
+	3,  // 26: ironhost.v1.AgentService.DeleteServer:output_type -> ironhost.v1.ServerActionResponse
+	20, // 27: ironhost.v1.AgentService.GetServerStatus:output_type -> ironhost.v1.ServerState
+	4,  // 28: ironhost.v1.AgentService.ListServers:output_type -> ironhost.v1.ListServersResponse
+	5,  // 29: ironhost.v1.AgentService.StreamConsole:output_type -> ironhost.v1.ConsoleOutput
+	3,  // 30: ironhost.v1.AgentService.SendCommand:output_type -> ironhost.v1.ServerActionResponse
+	3,  // 31: ironhost.v1.AgentService.GetLogs:output_type -> ironhost.v1.ServerActionResponse
+	11, // 32: ironhost.v1.AgentService.ListFiles:output_type -> ironhost.v1.ListFilesResponse
+	13, // 33: ironhost.v1.AgentService.ReadFile:output_type -> ironhost.v1.ReadFileResponse
+	3,  // 34: ironhost.v1.AgentService.WriteFile:output_type -> ironhost.v1.ServerActionResponse
+	3,  // 35: ironhost.v1.AgentService.DeleteFile:output_type -> ironhost.v1.ServerActionResponse
+	3,  // 36: ironhost.v1.AgentService.RenameFile:output_type -> ironhost.v1.ServerActionResponse
+	7,  // 37: ironhost.v1.AgentService.GetNodeStats:output_type -> ironhost.v1.NodeStats
+	8,  // 38: ironhost.v1.AgentService.Ping:output_type -> ironhost.v1.PingResponse
+	22, // [22:39] is the sub-list for method output_type
+	5,  // [5:22] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_ironhost_v1_agent_proto_init() }
@@ -744,7 +1269,7 @@ func file_ironhost_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ironhost_v1_agent_proto_rawDesc), len(file_ironhost_v1_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

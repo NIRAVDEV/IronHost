@@ -26,6 +26,13 @@ service AgentService {
   rpc SendCommand(SendCommandRequest) returns (ServerActionResponse);
   rpc GetLogs(ServerIdentifier) returns (ServerActionResponse);
   
+  // File management
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+  rpc ReadFile(ReadFileRequest) returns (ReadFileResponse);
+  rpc WriteFile(WriteFileRequest) returns (ServerActionResponse);
+  rpc DeleteFile(DeleteFileRequest) returns (ServerActionResponse);
+  rpc RenameFile(RenameFileRequest) returns (ServerActionResponse);
+
   // Node health
   rpc GetNodeStats(google.protobuf.Empty) returns (NodeStats);
   rpc Ping(google.protobuf.Empty) returns (PingResponse);
@@ -101,3 +108,52 @@ message PingResponse {
   string version = 2;
   int64 timestamp = 3;
 }
+
+// ── File management messages ──
+
+message FileInfo {
+  string name = 1;
+  string path = 2;        // relative path within the server directory
+  bool is_directory = 3;
+  int64 size = 4;          // file size in bytes
+  int64 modified_at = 5;   // unix timestamp
+}
+
+message ListFilesRequest {
+  string server_id = 1;
+  string path = 2;  // relative directory path (empty = root)
+}
+
+message ListFilesResponse {
+  repeated FileInfo files = 1;
+  string current_path = 2;
+}
+
+message ReadFileRequest {
+  string server_id = 1;
+  string path = 2;  // relative file path
+}
+
+message ReadFileResponse {
+  string content = 1;
+  string name = 2;
+  int64 size = 3;
+}
+
+message WriteFileRequest {
+  string server_id = 1;
+  string path = 2;
+  string content = 3;
+}
+
+message DeleteFileRequest {
+  string server_id = 1;
+  string path = 2;
+}
+
+message RenameFileRequest {
+  string server_id = 1;
+  string old_path = 2;
+  string new_path = 3;
+}
+

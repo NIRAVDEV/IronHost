@@ -90,6 +90,14 @@ func RegisterRoutes(app *fiber.App, db *database.DB, grpcPool *mastergrpc.Client
 	})
 	servers.Get("/:id/console", websocket.New(serverHandler.StreamConsoleWS))
 
+	// File management
+	fileHandler := NewFileHandler(db, grpcPool)
+	servers.Get("/:id/files", fileHandler.ListFiles)
+	servers.Get("/:id/files/content", fileHandler.ReadFile)
+	servers.Put("/:id/files/content", fileHandler.WriteFile)
+	servers.Delete("/:id/files", fileHandler.DeleteFile)
+	servers.Post("/:id/files/rename", fileHandler.RenameFile)
+
 	// Allocations (admin only)
 	allocations := protected.Group("/allocations")
 	allocations.Use(AdminMiddleware(db))

@@ -8,7 +8,6 @@ package v1
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -31,6 +30,11 @@ const (
 	AgentService_StreamConsole_FullMethodName   = "/ironhost.v1.AgentService/StreamConsole"
 	AgentService_SendCommand_FullMethodName     = "/ironhost.v1.AgentService/SendCommand"
 	AgentService_GetLogs_FullMethodName         = "/ironhost.v1.AgentService/GetLogs"
+	AgentService_ListFiles_FullMethodName       = "/ironhost.v1.AgentService/ListFiles"
+	AgentService_ReadFile_FullMethodName        = "/ironhost.v1.AgentService/ReadFile"
+	AgentService_WriteFile_FullMethodName       = "/ironhost.v1.AgentService/WriteFile"
+	AgentService_DeleteFile_FullMethodName      = "/ironhost.v1.AgentService/DeleteFile"
+	AgentService_RenameFile_FullMethodName      = "/ironhost.v1.AgentService/RenameFile"
 	AgentService_GetNodeStats_FullMethodName    = "/ironhost.v1.AgentService/GetNodeStats"
 	AgentService_Ping_FullMethodName            = "/ironhost.v1.AgentService/Ping"
 )
@@ -55,6 +59,12 @@ type AgentServiceClient interface {
 	StreamConsole(ctx context.Context, in *ServerIdentifier, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ConsoleOutput], error)
 	SendCommand(ctx context.Context, in *SendCommandRequest, opts ...grpc.CallOption) (*ServerActionResponse, error)
 	GetLogs(ctx context.Context, in *ServerIdentifier, opts ...grpc.CallOption) (*ServerActionResponse, error)
+	// File management
+	ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error)
+	ReadFile(ctx context.Context, in *ReadFileRequest, opts ...grpc.CallOption) (*ReadFileResponse, error)
+	WriteFile(ctx context.Context, in *WriteFileRequest, opts ...grpc.CallOption) (*ServerActionResponse, error)
+	DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*ServerActionResponse, error)
+	RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*ServerActionResponse, error)
 	// Node health
 	GetNodeStats(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*NodeStats, error)
 	Ping(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*PingResponse, error)
@@ -177,6 +187,56 @@ func (c *agentServiceClient) GetLogs(ctx context.Context, in *ServerIdentifier, 
 	return out, nil
 }
 
+func (c *agentServiceClient) ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListFilesResponse)
+	err := c.cc.Invoke(ctx, AgentService_ListFiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) ReadFile(ctx context.Context, in *ReadFileRequest, opts ...grpc.CallOption) (*ReadFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReadFileResponse)
+	err := c.cc.Invoke(ctx, AgentService_ReadFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) WriteFile(ctx context.Context, in *WriteFileRequest, opts ...grpc.CallOption) (*ServerActionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServerActionResponse)
+	err := c.cc.Invoke(ctx, AgentService_WriteFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*ServerActionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServerActionResponse)
+	err := c.cc.Invoke(ctx, AgentService_DeleteFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*ServerActionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServerActionResponse)
+	err := c.cc.Invoke(ctx, AgentService_RenameFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentServiceClient) GetNodeStats(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*NodeStats, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(NodeStats)
@@ -217,6 +277,12 @@ type AgentServiceServer interface {
 	StreamConsole(*ServerIdentifier, grpc.ServerStreamingServer[ConsoleOutput]) error
 	SendCommand(context.Context, *SendCommandRequest) (*ServerActionResponse, error)
 	GetLogs(context.Context, *ServerIdentifier) (*ServerActionResponse, error)
+	// File management
+	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
+	ReadFile(context.Context, *ReadFileRequest) (*ReadFileResponse, error)
+	WriteFile(context.Context, *WriteFileRequest) (*ServerActionResponse, error)
+	DeleteFile(context.Context, *DeleteFileRequest) (*ServerActionResponse, error)
+	RenameFile(context.Context, *RenameFileRequest) (*ServerActionResponse, error)
 	// Node health
 	GetNodeStats(context.Context, *emptypb.Empty) (*NodeStats, error)
 	Ping(context.Context, *emptypb.Empty) (*PingResponse, error)
@@ -259,6 +325,21 @@ func (UnimplementedAgentServiceServer) SendCommand(context.Context, *SendCommand
 }
 func (UnimplementedAgentServiceServer) GetLogs(context.Context, *ServerIdentifier) (*ServerActionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLogs not implemented")
+}
+func (UnimplementedAgentServiceServer) ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListFiles not implemented")
+}
+func (UnimplementedAgentServiceServer) ReadFile(context.Context, *ReadFileRequest) (*ReadFileResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReadFile not implemented")
+}
+func (UnimplementedAgentServiceServer) WriteFile(context.Context, *WriteFileRequest) (*ServerActionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WriteFile not implemented")
+}
+func (UnimplementedAgentServiceServer) DeleteFile(context.Context, *DeleteFileRequest) (*ServerActionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteFile not implemented")
+}
+func (UnimplementedAgentServiceServer) RenameFile(context.Context, *RenameFileRequest) (*ServerActionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RenameFile not implemented")
 }
 func (UnimplementedAgentServiceServer) GetNodeStats(context.Context, *emptypb.Empty) (*NodeStats, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetNodeStats not implemented")
@@ -460,6 +541,96 @@ func _AgentService_GetLogs_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_ListFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListFilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ListFiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ListFiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ListFiles(ctx, req.(*ListFilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_ReadFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReadFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ReadFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ReadFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ReadFile(ctx, req.(*ReadFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_WriteFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WriteFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).WriteFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_WriteFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).WriteFile(ctx, req.(*WriteFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_DeleteFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).DeleteFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_DeleteFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).DeleteFile(ctx, req.(*DeleteFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_RenameFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).RenameFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_RenameFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).RenameFile(ctx, req.(*RenameFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentService_GetNodeStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -538,6 +709,26 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLogs",
 			Handler:    _AgentService_GetLogs_Handler,
+		},
+		{
+			MethodName: "ListFiles",
+			Handler:    _AgentService_ListFiles_Handler,
+		},
+		{
+			MethodName: "ReadFile",
+			Handler:    _AgentService_ReadFile_Handler,
+		},
+		{
+			MethodName: "WriteFile",
+			Handler:    _AgentService_WriteFile_Handler,
+		},
+		{
+			MethodName: "DeleteFile",
+			Handler:    _AgentService_DeleteFile_Handler,
+		},
+		{
+			MethodName: "RenameFile",
+			Handler:    _AgentService_RenameFile_Handler,
 		},
 		{
 			MethodName: "GetNodeStats",

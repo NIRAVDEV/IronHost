@@ -18,6 +18,26 @@ import (
 	"github.com/ironhost/master/internal/models"
 )
 
+// blockedCommands are commands that must NOT be sent via the console.
+// Server lifecycle should only be controlled through the dashboard buttons.
+var blockedCommands = map[string]bool{
+	"stop":     true,
+	"end":      true,
+	"shutdown": true,
+}
+
+// isCommandBlocked returns true if the command (case-insensitive, first word)
+// matches any entry in the blocklist.
+func isCommandBlocked(raw string) bool {
+	cmd := strings.TrimSpace(raw)
+	if cmd == "" {
+		return false
+	}
+	// Extract the first word (the base command)
+	base := strings.ToLower(strings.Fields(cmd)[0])
+	return blockedCommands[base]
+}
+
 // ServerHandler handles server-related API requests
 type ServerHandler struct {
 	db       *database.DB
@@ -514,6 +534,11 @@ func (h *ServerHandler) SendCommand(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 	}
 
+	// Block dangerous commands — must use dashboard buttons instead
+	if isCommandBlocked(req.Command) {
+		return fiber.NewError(fiber.StatusForbidden, "this command is restricted — use the dashboard buttons to control the server")
+	}
+
 	server, err := h.getServerForUser(c)
 	if err != nil {
 		return err
@@ -705,6 +730,16 @@ func (h *ServerHandler) StreamConsoleWS(c *websocket.Conn) {
 		}
 
 		if msg.Type == "command" && msg.Command != "" {
+			// Block dangerous commands
+			if isCommandBlocked(msg.Command) {
+				c.WriteJSON(fiber.Map{
+					"type":    "command_result",
+					"command": msg.Command,
+					"output":  "Error: this command is restricted — use the dashboard buttons to control the server",
+				})
+				continue
+			}
+
 			// Send command via gRPC
 			resp, err := client.SendCommand(grpcCtx, &agentpb.SendCommandRequest{
 				ServerId: server.ID.String(),

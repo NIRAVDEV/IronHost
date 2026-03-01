@@ -195,6 +195,46 @@ export const serversApi = {
     },
 };
 
+// Files API
+export interface FileEntry {
+    name: string;
+    path: string;
+    is_directory: boolean;
+    size: number;
+    modified_at: number;
+}
+
+export const filesApi = {
+    list: async (serverId: string, path: string = '') => {
+        const { data } = await api.get<{ files: FileEntry[]; current_path: string; success: boolean }>(
+            `/servers/${serverId}/files`, { params: { path } }
+        );
+        return data;
+    },
+
+    read: async (serverId: string, path: string) => {
+        const { data } = await api.get<{ content: string; file_name: string; file_size: number; success: boolean }>(
+            `/servers/${serverId}/files/content`, { params: { path } }
+        );
+        return data;
+    },
+
+    write: async (serverId: string, path: string, content: string) => {
+        const { data } = await api.put<{ success: boolean }>(`/servers/${serverId}/files/content`, { path, content });
+        return data;
+    },
+
+    delete: async (serverId: string, path: string) => {
+        const { data } = await api.delete<{ success: boolean }>(`/servers/${serverId}/files`, { params: { path } });
+        return data;
+    },
+
+    rename: async (serverId: string, oldPath: string, newPath: string) => {
+        const { data } = await api.post<{ success: boolean }>(`/servers/${serverId}/files/rename`, { old_path: oldPath, new_path: newPath });
+        return data;
+    },
+};
+
 // Nodes API
 export const nodesApi = {
     list: async () => {

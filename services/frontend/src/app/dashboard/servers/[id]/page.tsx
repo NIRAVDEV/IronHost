@@ -5,7 +5,7 @@ import { useEffect, useState, use, useCallback } from 'react';
 import { serversApi, Server, billingApi } from '@/lib/api';
 
 // ─── Tab type ───
-type Tab = 'overview' | 'files' | 'settings';
+type Tab = 'overview' | 'settings';
 
 // ─── Control Button ───
 function ControlButton({
@@ -487,8 +487,8 @@ function SettingsTab({
                     onClick={handleSave}
                     disabled={!hasChanges || saving}
                     className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${hasChanges
-                            ? 'gradient-primary text-white hover:opacity-90'
-                            : 'bg-muted/50 text-muted-foreground cursor-not-allowed'
+                        ? 'gradient-primary text-white hover:opacity-90'
+                        : 'bg-muted/50 text-muted-foreground cursor-not-allowed'
                         }`}
                 >
                     {saving ? (
@@ -633,7 +633,6 @@ export default function ServerDetailPage({ params }: { params: Promise<{ id: str
 
     const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
         { key: 'overview', label: 'Overview', icon: Icons.overview },
-        { key: 'files', label: 'Files', icon: Icons.folder },
         { key: 'settings', label: 'Settings', icon: Icons.settings },
     ];
 
@@ -708,14 +707,21 @@ export default function ServerDetailPage({ params }: { params: Promise<{ id: str
                         key={tab.key}
                         onClick={() => setActiveTab(tab.key)}
                         className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === tab.key
-                                ? 'bg-primary-500/10 text-primary-400 shadow-sm'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                            ? 'bg-primary-500/10 text-primary-400 shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                             }`}
                     >
                         {tab.icon}
                         {tab.label}
                     </button>
                 ))}
+                <Link
+                    href={`/dashboard/servers/${server.id}/files`}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                >
+                    {Icons.folder}
+                    Files
+                </Link>
                 <Link
                     href={`/dashboard/servers/${server.id}/console`}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
@@ -727,7 +733,7 @@ export default function ServerDetailPage({ params }: { params: Promise<{ id: str
 
             {/* Tab Content */}
             {activeTab === 'overview' && <OverviewTab server={server} />}
-            {activeTab === 'files' && <FilesTab />}
+
             {activeTab === 'settings' && <SettingsTab server={server} onUpdate={fetchServer} />}
         </div>
     );
