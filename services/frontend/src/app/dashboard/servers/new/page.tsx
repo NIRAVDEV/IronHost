@@ -142,7 +142,7 @@ export default function CreateServerPage() {
                 memory_limit: memoryLimit,
                 cpu_limit: cpuLimit,
                 disk_limit: diskLimit,
-                game_type: gameType,
+                server_type: gameType,
             });
             router.push('/dashboard/servers');
         } catch (err: unknown) {
@@ -161,6 +161,8 @@ export default function CreateServerPage() {
         { value: 'SPIGOT', label: 'Minecraft Spigot', icon: '🔧' },
         { value: 'FORGE', label: 'Minecraft Forge', icon: '⚒️' },
         { value: 'FABRIC', label: 'Minecraft Fabric', icon: '🧵' },
+        { value: 'PURPUR', label: 'Minecraft Purpur', icon: '🟣' },
+        { value: 'LEAF', label: 'Minecraft Leaf', icon: '🍃' },
     ];
 
     const freeRAM = (user?.resource_ram_mb || 0) - (user?.resource_ram_used_mb || 0);

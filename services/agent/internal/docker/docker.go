@@ -48,13 +48,21 @@ func (m *Manager) Close() error {
 	return m.client.Close()
 }
 
-// PullImage pulls a Docker image from registry
-// Supports custom images or defaults to itzg/minecraft-server
+// PullImage pulls a Docker image from registry if it doesn't already exist locally.
+// Supports custom images or defaults to itzg/minecraft-server.
 func (m *Manager) PullImage(ctx context.Context, imageName string) error {
 	if imageName == "" {
 		imageName = DefaultMinecraftImage
 	}
 
+	// Check if image already exists locally — skip pull if so
+	_, _, err := m.client.ImageInspectWithRaw(ctx, imageName)
+	if err == nil {
+		fmt.Printf("✅ Image %s already exists locally, skipping pull\n", imageName)
+		return nil
+	}
+
+	fmt.Printf("⬇️  Image %s not found locally, pulling...\n", imageName)
 	reader, err := m.client.ImagePull(ctx, imageName, types.ImagePullOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to pull image %s: %w", imageName, err)

@@ -144,7 +144,7 @@ export const serversApi = {
         memory_limit: number;
         cpu_limit?: number;
         disk_limit: number;
-        game_type?: string;
+        server_type?: string;
     }) => {
         const { data } = await api.post<{ server: Server }>('/servers', serverData);
         return data.server;
