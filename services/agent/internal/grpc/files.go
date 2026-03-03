@@ -1,15 +1,19 @@
 package grpc
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
 // ── File Management ──
-// These methods operate on the host filesystem at {dataDir}/servers/{serverID}.
+// These methods operate on the host filesystem at the server's data directory.
+// The data directory is resolved by inspecting the Docker container's /data mount,
+// falling back to {dataDir}/servers/{serverID} if no container is found.
 // They are called by the Agent's SendCommand handler when the command starts
 // with the special "__file:" prefix.
 
@@ -33,6 +37,22 @@ type FileResponse struct {
 	CurrentPath string     `json:"current_path,omitempty"`
 }
 
+// getServerRoot returns the host-side root directory for a server's files.
+// It first tries to resolve the path from the Docker container's /data mount,
+// falling back to {dataDir}/servers/{serverID}.
+func (s *AgentService) getServerRoot(serverID string) string {
+	ctx := context.Background()
+	if dataPath, err := s.dockerMgr.GetContainerDataPath(ctx, serverID); err == nil {
+		log.Printf("📁 getServerRoot: resolved from Docker mount: %q", dataPath)
+		return dataPath
+	}
+
+	// Fallback to computed path
+	fallback := filepath.Join(s.dataDir, "servers", serverID)
+	log.Printf("📁 getServerRoot: using fallback path: %q", fallback)
+	return fallback
+}
+
 // resolveServerPath returns the absolute path within a server's data directory.
 // It prevents path traversal attacks.
 func (s *AgentService) resolveServerPath(serverID, relPath string) (string, error) {
@@ -40,7 +60,7 @@ func (s *AgentService) resolveServerPath(serverID, relPath string) (string, erro
 		return "", fmt.Errorf("invalid server ID")
 	}
 
-	serverRoot := filepath.Join(s.dataDir, "servers", serverID)
+	serverRoot := s.getServerRoot(serverID)
 	target := filepath.Join(serverRoot, filepath.Clean("/"+relPath))
 
 	absTarget, err := filepath.Abs(target)
@@ -51,6 +71,8 @@ func (s *AgentService) resolveServerPath(serverID, relPath string) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("invalid server root")
 	}
+
+	log.Printf("📁 resolveServerPath: serverRoot=%q absRoot=%q absTarget=%q", serverRoot, absRoot, absTarget)
 
 	if !strings.HasPrefix(absTarget, absRoot) {
 		return "", fmt.Errorf("access denied: path traversal")
@@ -63,6 +85,7 @@ func (s *AgentService) resolveServerPath(serverID, relPath string) (string, erro
 // Command format: "__file:<operation>" with JSON body.
 // Operations: list, read, write, delete, rename
 func (s *AgentService) HandleFileCommand(serverID, operation, body string) string {
+	log.Printf("📂 HandleFileCommand: serverID=%q op=%q body=%q", serverID, operation, body)
 	var resp FileResponse
 
 	switch operation {
@@ -81,6 +104,7 @@ func (s *AgentService) HandleFileCommand(serverID, operation, body string) strin
 	}
 
 	data, _ := json.Marshal(resp)
+	log.Printf("📂 HandleFileCommand result: %s", string(data))
 	return string(data)
 }
 
@@ -93,7 +117,16 @@ func (s *AgentService) fileList(serverID, pathStr string) FileResponse {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return FileResponse{Error: "directory not found"}
+			// Auto-create server data directory if it doesn't exist yet
+			if mkErr := os.MkdirAll(dirPath, 0755); mkErr != nil {
+				return FileResponse{Error: "failed to create directory: " + mkErr.Error()}
+			}
+			// Return empty listing for newly created directory
+			return FileResponse{
+				Success:     true,
+				Files:       []FileInfo{},
+				CurrentPath: filepath.ToSlash(pathStr),
+			}
 		}
 		return FileResponse{Error: "failed to read directory: " + err.Error()}
 	}

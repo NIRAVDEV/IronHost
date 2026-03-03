@@ -312,6 +312,30 @@ func (m *Manager) GetContainerByServerID(ctx context.Context, serverID string) (
 	return nil, fmt.Errorf("container not found for server: %s", serverID)
 }
 
+// GetContainerDataPath inspects the container for a server and returns
+// the host-side path mounted at /data. This is the directory that contains
+// the server's actual files.
+func (m *Manager) GetContainerDataPath(ctx context.Context, serverID string) (string, error) {
+	ctr, err := m.GetContainerByServerID(ctx, serverID)
+	if err != nil {
+		return "", err
+	}
+
+	// Inspect the container to get mount details
+	info, err := m.client.ContainerInspect(ctx, ctr.ID)
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect container: %w", err)
+	}
+
+	for _, mnt := range info.Mounts {
+		if mnt.Destination == "/data" {
+			return mnt.Source, nil
+		}
+	}
+
+	return "", fmt.Errorf("no /data mount found for server: %s", serverID)
+}
+
 // Helper function placeholders - implement with proper imports
 func decodeStats(reader io.Reader, stats *types.StatsJSON) error {
 	// Decode JSON stats from reader
